@@ -1,0 +1,72 @@
+
+Duplicate group for values (39.1943854, 29.619524, 330.0, 335.0, 1.0):
+ cf_custom_x_coordinate  cf_custom_y_coordinate  cf_start_year  cf_end_year  cf_num_coins_found    ID                    cf_excavation_name
+              39.194385               29.619524          330.0        335.0                 1.0 17330 Constantinopolis coin from Haci Kebir
+              39.194385               29.619524          330.0        335.0                 1.0 17333       VRBS Roma coin from Çavdarhisar
+
+Duplicate group for values (42.1072646, 44.7685682, 309.0, 379.0, 1.0):
+ cf_custom_x_coordinate  cf_custom_y_coordinate  cf_start_year  cf_end_year  cf_num_coins_found    ID                                cf_excavation_name
+              42.107265               44.768568          309.0        379.0                 1.0 17769 Sassanian grave find from Zhinvali, grave no. 526
+              42.107265               44.768568          309.0        379.0                 1.0 17770 Sassanian grave find from Zhinvali, grave no. 212
+
+Duplicate group for values (44.45, 28.333333, 347.0, 348.0, 1.0):
+ cf_custom_x_coordinate  cf_custom_y_coordinate  cf_start_year  cf_end_year  cf_num_coins_found    ID            cf_excavation_name
+                  44.45               28.333333          347.0        348.0                 1.0 16475 Vertan and Custurea VII #1069
+                  44.45               28.333333          347.0        348.0                 1.0 16476 Vertan and Custurea VII #1070
+                  44.45               28.333333          347.0        348.0                 1.0 16477 Vertan and Custurea VII #1071
+
+Duplicate group for values (44.45, 28.333333, 355.0, 361.0, 1.0):
+ cf_custom_x_coordinate  cf_custom_y_coordinate  cf_start_year  cf_end_year  cf_num_coins_found    ID            cf_excavation_name
+                  44.45               28.333333          355.0        361.0                 1.0 16481 Vertan and Custurea VII #1075
+                  44.45               28.333333          355.0        361.0                 1.0 16482 Vertan and Custurea VII #1076
+
+Duplicate group for values (44.45, 28.333333, 355.0, 363.0, 1.0):
+ cf_custom_x_coordinate  cf_custom_y_coordinate  cf_start_year  cf_end_year  cf_num_coins_found    ID            cf_excavation_name
+                  44.45               28.333333          355.0        363.0                 1.0 16478 Vertan and Custurea VII #1072
+                  44.45               28.333333          355.0        363.0                 1.0 16479 Vertan and Custurea VII #1073
+
+Duplicate group for values (44.45, 28.333333, 364.0, 367.0, 1.0):
+ cf_custom_x_coordinate  cf_custom_y_coordinate  cf_start_year  cf_end_year  cf_num_coins_found    ID            cf_excavation_name
+                  44.45               28.333333          364.0        367.0                 1.0 16484 Vertan and Custurea VII #1078
+                  44.45               28.333333          364.0        367.0                 1.0 16485 Vertan and Custurea VII #1079
+
+Duplicate group for values (45.284347, 36.9905628, 375.0, 392.0, 1.0):
+ cf_custom_x_coordinate  cf_custom_y_coordinate  cf_start_year  cf_end_year  cf_num_coins_found    ID cf_excavation_name
+              45.284347               36.990563          375.0        392.0                 1.0 13773                NaN
+              45.284347               36.990563          375.0        392.0                 1.0 13770                NaN
+
+Duplicate group for values (47.3147931, 28.9746517, 337.0, 361.0, 1.0):
+ cf_custom_x_coordinate  cf_custom_y_coordinate  cf_start_year  cf_end_year  cf_num_coins_found    ID cf_excavation_name
+              47.314793               28.974652          337.0        361.0                 1.0 13828                NaN
+              47.314793               28.974652          337.0        361.0                 1.0 13829                NaN
+
+Duplicate group for values (48.6484138, 44.3849756, 325.0, 337.0, 1.0):
+ cf_custom_x_coordinate  cf_custom_y_coordinate  cf_start_year  cf_end_year  cf_num_coins_found    ID cf_excavation_name
+              48.648414               44.384976          325.0        337.0                 1.0 13771                NaN
+              48.648414               44.384976          325.0        337.0                 1.0 13775                NaN
+
+Duplicate group for values (49.258, 4.032, 336.0, 337.0, 1.0):
+ cf_custom_x_coordinate  cf_custom_y_coordinate  cf_start_year  cf_end_year  cf_num_coins_found    ID cf_excavation_name
+                 49.258                   4.032          336.0        337.0                 1.0 16222                NaN
+                 49.258                   4.032          336.0        337.0                 1.0 15547                NaN
+
+Duplicate group for values (51.530018, 46.034683, 324.0, 337.0, 1.0):
+ cf_custom_x_coordinate  cf_custom_y_coordinate  cf_start_year  cf_end_year  cf_num_coins_found    ID                                                      cf_excavation_name
+              51.530018               46.034683          324.0        337.0                 1.0 13644 Excavation of a burial in three to four kilometers southwest of Saratov
+              51.530018               46.034683          324.0        337.0                 1.0 13645                                 Discovery of the 80s of the XIX century
+
+Duplicate group for values (52.57766, 1.64413, 302.0, 402.0, 7.0):
+ cf_custom_x_coordinate  cf_custom_y_coordinate  cf_start_year  cf_end_year  cf_num_coins_found    ID cf_excavation_name
+               52.57766                 1.64413          302.0        402.0                 7.0 10470                NaN
+               52.57766                 1.64413          302.0        402.0                 7.0 10473                NaN
+               52.57766                 1.64413          302.0        402.0                 7.0 10474                NaN
+
+Duplicate group for values (52.64997, 1.71951, 306.0, 341.0, 15.0):
+ cf_custom_x_coordinate  cf_custom_y_coordinate  cf_start_year  cf_end_year  cf_num_coins_found    ID cf_excavation_name
+               52.64997                 1.71951          306.0        341.0                15.0 10485                NaN
+               52.64997                 1.71951          306.0        341.0                15.0 10486                NaN
+
+Duplicate group for values (57.332162, 18.479465, 395.0, 527.0, 82.0):
+ cf_custom_x_coordinate  cf_custom_y_coordinate  cf_start_year  cf_end_year  cf_num_coins_found    ID cf_excavation_name
+              57.332162               18.479465          395.0        527.0                82.0 15041                NaN
+              57.332162               18.479465          395.0        527.0                82.0 18338        Botes Hoard

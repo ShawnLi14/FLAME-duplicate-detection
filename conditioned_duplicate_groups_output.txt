@@ -1,0 +1,10 @@
+
+Duplicate group for values (7.0, 383, 387) (same columns in CoinGroups):
+ cg_num_coins  cg_start_year  cg_end_year  cfID cf_excavation_name  cf_start_year  cf_end_year  cf_num_coins_found  cf_custom_x_coordinate  cf_custom_y_coordinate
+          7.0            383          387 13412     Hawara hoard 2          107.0        465.0              2999.0               29.253514               30.895832
+          7.0            383          387 13389     Hawara hoard 6         -175.0        423.0              3119.0               29.253514               30.895832
+
+Duplicate group for values (10.0, 388, 392) (same columns in CoinGroups):
+ cg_num_coins  cg_start_year  cg_end_year  cfID                                    cf_excavation_name  cf_start_year  cf_end_year  cf_num_coins_found  cf_custom_x_coordinate  cf_custom_y_coordinate
+         10.0            388          392  1334                                              Karanis          -271.0        641.0             26796.0                29.51644               30.897603
+         10.0            388          392 13374 Karanis hoard from University of Michigan excavations          340.0        500.0              1074.0                29.51644               30.897603
