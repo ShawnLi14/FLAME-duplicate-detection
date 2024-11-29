@@ -1,22 +1,22 @@
 import pandas as pd
+from itertools import combinations
+from tqdm import tqdm
 
-def find_conditioned_duplicates_with_join(
-    coin_groups_path, coin_finds_path, same_columns, different_columns,
-    extra_columns_finds, coin_finds_same_columns, output_file
+
+def calculate_similarity_between_pairs(
+    coin_groups_path, coin_finds_path, similarity_columns_coin_groups,
+    coin_finds_compare_columns, output_file
 ):
     """
-    Identifies groups of rows where the specified columns in CoinGroups.csv have identical values,
-    while other columns are required to have different values. Additionally, checks that corresponding
-    rows in CoinFinds.csv (joined on cfID and ID) have identical values in specified columns.
-    Results are written to an output file.
+    Efficiently calculates percent similarity between pairs of suspicious CoinFinds based on CoinGroups attribution,
+    ensuring that output pairs share the same values for specified comparison columns.
+    Excludes CoinFinds where 'cf_num_coins_found' is 0 or where no associated CoinGroups exist.
 
     Parameters:
         coin_groups_path (str): Path to the CoinGroups.csv file.
         coin_finds_path (str): Path to the CoinFinds.csv file.
-        same_columns (list of str): Columns in CoinGroups that must have identical values.
-        different_columns (list of str): Columns in CoinGroups that must have different values within groups.
-        extra_columns_finds (list of str): Additional columns from CoinFinds to include in the output.
-        coin_finds_same_columns (list of str): Columns in CoinFinds that must be the same for duplicates.
+        similarity_columns_coin_groups (list of str): Columns in CoinGroups to be used for similarity calculation.
+        coin_finds_compare_columns (list of str): Columns in CoinFinds to identify suspicious duplicates.
         output_file (str): Path to the output file where results will be written.
     """
     try:
@@ -24,55 +24,96 @@ def find_conditioned_duplicates_with_join(
         coin_groups = pd.read_csv(coin_groups_path)
         coin_finds = pd.read_csv(coin_finds_path)
 
-        # Validate that all columns in the input arrays exist, if the arrays are not empty
-        all_coin_groups_columns = same_columns + different_columns
-        for column in all_coin_groups_columns:
+        # Ensure necessary columns exist
+        for column in ["cfID"] + similarity_columns_coin_groups:
             if column not in coin_groups.columns:
                 with open(output_file, 'w', encoding='utf-8') as f:
                     f.write(f"Column '{column}' does not exist in CoinGroups.csv.\n")
                 return
 
-        for column in coin_finds_same_columns + extra_columns_finds + ["ID"]:
+        for column in ["ID", "cf_num_coins_found"] + coin_finds_compare_columns:
             if column not in coin_finds.columns:
                 with open(output_file, 'w', encoding='utf-8') as f:
                     f.write(f"Column '{column}' does not exist in CoinFinds.csv.\n")
                 return
 
-        # Merge CoinGroups and CoinFinds on cfID (CoinGroups) and ID (CoinFinds)
-        merged = pd.merge(
-            coin_groups, coin_finds, left_on="cfID", right_on="ID", how="inner"
+        # Exclude rows where 'cf_num_coins_found' is 0
+        coin_finds = coin_finds[coin_finds["cf_num_coins_found"] > 0]
+
+        # Identify CoinFinds that have associated CoinGroups
+        valid_coinfind_ids = coin_groups["cfID"].unique()
+        coin_finds = coin_finds[coin_finds["ID"].isin(valid_coinfind_ids)]
+
+        # Identify suspicious CoinFinds based on comparison columns
+        coin_finds["CompareKey"] = coin_finds[coin_finds_compare_columns].astype(str).agg("_".join, axis=1)
+        suspicious_groups = coin_finds.groupby("CompareKey").filter(lambda x: len(x) > 1)
+
+        if suspicious_groups.empty:
+            with open(output_file, 'w', encoding='utf-8') as f:
+                f.write("No suspicious CoinFinds identified for comparison.\n")
+            return
+
+        # Attribute CoinGroups rows to each suspicious CoinFind by ID
+        coin_groups_by_find = coin_groups.groupby("cfID")
+        suspicious_groups["AttributedGroups"] = suspicious_groups["ID"].map(
+            lambda find_id: coin_groups_by_find.get_group(find_id)
+            if find_id in coin_groups_by_find.groups
+            else pd.DataFrame(columns=similarity_columns_coin_groups)
         )
 
-        # Handle the case where same_columns is empty (group entire dataset)
-        grouped = merged.groupby(same_columns) if same_columns else [(None, merged)]
-        duplicates_found = False
+        # Generate all unique pairs of suspicious CoinFinds
+        pairs = combinations(suspicious_groups.index, 2)
+        results = []
 
+        # Progress bar for comparison
+        total_pairs = len(suspicious_groups) * (len(suspicious_groups) - 1) // 2
+        with tqdm(total=total_pairs, desc="Processing CoinFind pairs") as pbar:
+            for idx1, idx2 in pairs:
+                find1 = suspicious_groups.loc[idx1]
+                find2 = suspicious_groups.loc[idx2]
+
+                # Ensure the pair has the same comparison column values
+                if not all(find1[col] == find2[col] for col in coin_finds_compare_columns):
+                    pbar.update(1)
+                    continue
+
+                # Retrieve attributed CoinGroups for each CoinFind
+                groups1 = find1["AttributedGroups"]
+                groups2 = find2["AttributedGroups"]
+
+                # Skip if either CoinFind has no attributed groups
+                if groups1.empty or groups2.empty:
+                    pbar.update(1)
+                    continue
+
+                groups1 = groups1[similarity_columns_coin_groups].drop_duplicates()
+                groups2 = groups2[similarity_columns_coin_groups].drop_duplicates()
+
+                # Compare CoinGroups rows and calculate similarity
+                merged = pd.merge(
+                    groups1,
+                    groups2,
+                    how="inner"
+                )
+                total_unique_rows = len(groups1) + len(groups2) - len(merged)
+                similarity_percentage = (len(merged) / total_unique_rows) * 100 if total_unique_rows > 0 else 0
+
+                if similarity_percentage > 0:  # Only output non-zero similarity
+                    results.append((find1["ID"], find2["ID"], similarity_percentage))
+
+                pbar.update(1)
+
+        # Sort results by similarity percentage (highest to lowest)
+        sorted_results = sorted(results, key=lambda x: x[2], reverse=True)
+
+        # Write results to the output file
         with open(output_file, 'w', encoding='utf-8') as f:
-            for group_key, group in grouped:
-                # If different_columns is empty, skip variability check
-                if different_columns:
-                    unique_values_coin_groups = group[different_columns].nunique()
-                    different_condition = (unique_values_coin_groups > 1).all()
-                else:
-                    different_condition = True
-
-                # If coin_finds_same_columns is empty, treat it as always consistent
-                if coin_finds_same_columns:
-                    consistent_coin_finds = group[coin_finds_same_columns].nunique().eq(1).all()
-                else:
-                    consistent_coin_finds = True
-
-                # Identify valid duplicate groups
-                if different_condition and consistent_coin_finds:
-                    duplicates_found = True
-                    f.write(f"\nDuplicate group for values {group_key} (same columns in CoinGroups):\n")
-                    # Include extra columns from CoinFinds in the output
-                    selected_columns = same_columns + different_columns + extra_columns_finds + coin_finds_same_columns
-                    f.write(group[selected_columns].to_string(index=False))
-                    f.write("\n")
-
-            if not duplicates_found:
-                f.write("No duplicates found meeting the specified conditions.\n")
+            if sorted_results:
+                f.write("FindID1,FindID2,Similarity (%)\n")
+                for find_id1, find_id2, similarity in sorted_results:
+                    f.write(f"{find_id1},{find_id2},{similarity:.2f}\n")
+            else:
+                f.write("No pairs with non-zero similarity to compare.\n")
 
     except FileNotFoundError as e:
         with open(output_file, 'w', encoding='utf-8') as f:
@@ -81,16 +122,15 @@ def find_conditioned_duplicates_with_join(
         with open(output_file, 'w', encoding='utf-8') as f:
             f.write(f"An error occurred: {e}\n")
 
+
 if __name__ == "__main__":
     coin_groups_path = "CoinGroups.csv"
     coin_finds_path = "CoinFinds.csv"
-    same_columns = ["cg_num_coins", "cg_start_year", "cg_end_year"]  # Columns in CoinGroups that must be the same
-    different_columns = ["cfID"]  # Columns in CoinGroups that must differ within groups
-    extra_columns_finds = ["cf_excavation_name", "cf_start_year", "cf_end_year", "cf_num_coins_found"]  # Additional columns from CoinFinds to include in the output
-    coin_finds_same_columns = ["cf_custom_x_coordinate", "cf_custom_y_coordinate"]  # Columns in CoinFinds that must be the same
-    output_file = "conditioned_duplicate_groups_output.txt"  # Output file path
+    similarity_columns_coin_groups = ["cg_num_coins", "cg_start_year", "cg_end_year"]  # Columns in CoinGroups
+    coin_finds_compare_columns = ["cf_custom_x_coordinate", "cf_custom_y_coordinate"]  # Columns in CoinFinds
+    output_file = "pairwise_similarity_output.csv"  # Output file path
 
-    find_conditioned_duplicates_with_join(
-        coin_groups_path, coin_finds_path, same_columns, different_columns,
-        extra_columns_finds, coin_finds_same_columns, output_file
+    calculate_similarity_between_pairs(
+        coin_groups_path, coin_finds_path, similarity_columns_coin_groups,
+        coin_finds_compare_columns, output_file
     )

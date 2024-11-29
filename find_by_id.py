@@ -2,7 +2,8 @@ import pandas as pd
 
 def find_entries_by_id(file_path, id_values, output_file):
     """
-    Finds entries in the CSV file corresponding to the given list of IDs and writes the results to a file.
+    Finds entries in the CSV file corresponding to the given list of IDs and writes the results to a file,
+    including a link for manual verification.
 
     Parameters:
         file_path (str): Path to the CSV file.
@@ -23,15 +24,24 @@ def find_entries_by_id(file_path, id_values, output_file):
         # Filter rows based on the given IDs
         matching_rows = df[df["ID"].isin(id_values)]
 
+        # Create the manual verification link
+        ids_as_string = ",".join(map(str, id_values))
+        manual_verification_link = f"http://csla100w.princeton.edu:82/?FindFocusIDs={ids_as_string}"
+
         with open(output_file, 'w') as f:
             if matching_rows.empty:
                 f.write("No matching entries found for the provided IDs.\n")
+                f.write(f"Manual verification link: {manual_verification_link}\n")
                 print("No matching entries found for the provided IDs.")
             else:
                 f.write("Matching entries:\n")
                 f.write(matching_rows.to_string(index=False))
+                f.write("\n\n")
+                f.write(f"Manual verification link: {manual_verification_link}\n")
                 print("Matching entries:")
                 print(matching_rows)
+
+            print(f"Manual verification link: {manual_verification_link}")
 
     except FileNotFoundError:
         with open(output_file, 'w') as f:
