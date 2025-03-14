@@ -1,0 +1,390 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>FLAME Duplicates - Active Entries</title>
+  <!-- Bootstrap CSS -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <!-- Bootstrap Icons -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css" rel="stylesheet">
+  <style>
+    body { padding-top: 70px; padding-bottom: 20px; }
+    .error-message { color: red; font-weight: bold; }
+    .accordion-button:not(.collapsed) { color: #0d6efd; background-color: #e7f1ff; }
+    table th, table td { vertical-align: middle !important; }
+    /* Vote UI styling similar to Reddit/StackOverflow */
+    .vote-container {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      margin-right: 1rem;
+    }
+    .vote-container button {
+      background: none;
+      border: none;
+      color: #888;
+      font-size: 1.8rem;
+      cursor: pointer;
+      padding: 0;
+    }
+    .vote-container button:hover {
+      color: #000;
+    }
+    .vote-count {
+      font-weight: bold;
+      margin: 0.25rem 0;
+    }
+  </style>
+  
+  <!-- Firebase App, Firestore and Auth (using compat libraries) -->
+  <script src="https://www.gstatic.com/firebasejs/11.3.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/11.3.1/firebase-firestore-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/11.3.1/firebase-auth-compat.js"></script>
+</head>
+<body>
+  <!-- Navigation Bar with Auth Dropdown -->
+  <nav class="navbar navbar-expand-lg navbar-dark bg-dark fixed-top">
+    <div class="container-fluid">
+      <a class="navbar-brand" href="index.html">FLAME Duplicates Database</a>
+      <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+        <span class="navbar-toggler-icon"></span>
+      </button>
+      <div class="collapse navbar-collapse" id="navbarNav">
+         <ul class="navbar-nav me-auto">
+           <li class="nav-item"><a class="nav-link active" href="index.html">Active Entries</a></li>
+         </ul>
+         <ul class="navbar-nav" id="nav-auth">
+           <!-- Auth-related nav items will be injected here -->
+         </ul>
+      </div>
+    </div>
+  </nav>
+  
+  <div class="container">
+    <h1 class="mb-4">FLAME Duplicates - Active Entries</h1>
+    <!-- Sorting Dropdown -->
+    <div class="mb-3">
+      <label for="sortDropdown" class="form-label"><strong>Sort By:</strong></label>
+      <select id="sortDropdown" class="form-select" style="width: auto; display: inline-block;">
+        <option value="similarity">Similarity</option>
+        <option value="upvotes">Upvotes</option>
+        <option value="downvotes">Downvotes</option>
+      </select>
+    </div>
+    <!-- Main Content -->
+    <div id="content"></div>
+  </div>
+  
+  <!-- Bootstrap JS and dependencies -->
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+  
+  <script>
+    // TODO: Replace with your Firebase configuration
+    const firebaseConfig = {
+      apiKey: "AIzaSyCs7xdDST8IB1UnXyIf4pPpqDhV63kbx90",
+      authDomain: "flame-duplicates.firebaseapp.com",
+      projectId: "flame-duplicates",
+      storageBucket: "flame-duplicates.firebasestorage.app",
+      messagingSenderId: "165370416322",
+      appId: "1:165370416322:web:b02fea666c37ee3bbdff5b",
+      measurementId: "G-4D153C89DP"
+    };
+
+    // Initialize Firebase
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.firestore();
+    const auth = firebase.auth();
+
+    // DOM References
+    const navAuth = document.getElementById('nav-auth');
+    const contentDiv = document.getElementById('content');
+    const sortDropdown = document.getElementById('sortDropdown');
+
+    // Set the dropdown's value based on the URL parameter, defaulting to "similarity"
+    const urlParams = new URLSearchParams(window.location.search);
+    const currentSort = urlParams.get("sortby") || "similarity";
+    sortDropdown.value = currentSort;
+
+    // When the sort option changes, update the URL parameter and reload the page
+    sortDropdown.addEventListener('change', function() {
+      const newSort = this.value;
+      urlParams.set("sortby", newSort);
+      window.location.search = urlParams.toString();
+    });
+
+    // Google Sign-In function using popup
+    function signInWithGoogle() {
+      const provider = new firebase.auth.GoogleAuthProvider();
+      auth.signInWithPopup(provider)
+        .then(result => { console.log('Signed in as:', result.user.email); })
+        .catch(error => { console.error('Error during sign-in:', error); });
+    }
+
+    // Update the navbar based on auth state (includes admin dropdown if applicable)
+    async function updateNavbar(user) {
+      navAuth.innerHTML = "";
+      if (user) {
+        const tokenResult = await user.getIdTokenResult();
+        let adminLink = "";
+        if (tokenResult.claims.admin === true) {
+          adminLink = `<li><a class="dropdown-item" href="admin.html">Admin Panel</a></li>`;
+        }
+        const dropdown = document.createElement('li');
+        dropdown.className = 'nav-item dropdown';
+        dropdown.innerHTML = `
+          <a class="nav-link dropdown-toggle" href="#" id="profileDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+            <i class="bi bi-person-circle"></i> ${user.displayName || user.email}
+          </a>
+          <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="profileDropdown">
+            ${adminLink}
+            <li><a class="dropdown-item" href="#" id="logoutBtn">Log Out</a></li>
+          </ul>
+        `;
+        navAuth.appendChild(dropdown);
+        document.getElementById('logoutBtn').addEventListener('click', () => {
+          auth.signOut().then(() => {
+            console.log('User signed out.');
+          }).catch(error => {
+            console.error('Error during sign out:', error);
+          });
+        });
+      } else {
+        const signInItem = document.createElement('li');
+        signInItem.className = 'nav-item';
+        signInItem.innerHTML = `<button id="googleSignInBtn" class="btn btn-outline-light">Sign in with Google</button>`;
+        navAuth.appendChild(signInItem);
+        document.getElementById('googleSignInBtn').addEventListener('click', signInWithGoogle);
+      }
+    }
+
+    auth.onAuthStateChanged(user => {
+      updateNavbar(user);
+      if (user) {
+        fetchData();
+      } else {
+        contentDiv.innerHTML = "<p>Please sign in with Google to view the results.</p>";
+      }
+    });
+
+    // Fetch and display active entries (not deleted and not permanent), sorted based on URL parameter.
+    async function fetchData() {
+      try {
+        const querySnapshot = await db.collection("find_results").get();
+        let data = [];
+        querySnapshot.forEach(doc => {
+          let entry = doc.data();
+          entry.id = doc.id;
+          entry.upvotes = entry.upvotes || 0;
+          entry.downvotes = entry.downvotes || 0;
+          data.push(entry);
+        });
+        data = data.filter(item => !item.deleted && !item.permanent);
+        if (!data.length) {
+          contentDiv.innerHTML = `<p>No active entries available to display.</p>`;
+          return;
+        }
+  
+        // Determine sorting criterion based on URL parameter 'sortby'
+        const sortBy = urlParams.get("sortby") || "similarity";
+  
+        if (sortBy === "similarity") {
+          data.sort((a, b) => {
+            let simA = (a.Similarity != null) ? a.Similarity : 0;
+            let simB = (b.Similarity != null) ? b.Similarity : 0;
+            return simB - simA;
+          });
+        } else if (sortBy === "upvotes") {
+          data.sort((a, b) => (b.upvotes || 0) - (a.upvotes || 0));
+        } else if (sortBy === "downvotes") {
+          data.sort((a, b) => (b.downvotes || 0) - (a.downvotes || 0));
+        }
+  
+        const accordion = document.createElement('div');
+        accordion.className = 'accordion';
+        accordion.id = 'idLookupAccordion';
+  
+        data.forEach((pair, index) => {
+          const accordionItem = document.createElement('div');
+          accordionItem.className = 'accordion-item';
+  
+          const headerId = `heading${index}`;
+          const collapseId = `collapse${index}`;
+          const accordionHeader = document.createElement('h2');
+          accordionHeader.className = 'accordion-header';
+          accordionHeader.id = headerId;
+  
+          const accordionButton = document.createElement('button');
+          accordionButton.className = 'accordion-button collapsed';
+          accordionButton.type = 'button';
+          accordionButton.setAttribute('data-bs-toggle', 'collapse');
+          accordionButton.setAttribute('data-bs-target', `#${collapseId}`);
+          accordionButton.setAttribute('aria-expanded', 'false');
+          accordionButton.setAttribute('aria-controls', collapseId);
+          accordionButton.innerHTML = `
+            <strong>Pair ${index + 1}:</strong> 
+            FindID1=${pair.FindID1 != null ? pair.FindID1 : 'N/A'}, 
+            FindID2=${pair.FindID2 != null ? pair.FindID2 : 'N/A'}, 
+            Similarity=${pair.Similarity != null ? pair.Similarity.toFixed(2) + '%' : 'N/A'}
+          `;
+          accordionHeader.appendChild(accordionButton);
+          accordionItem.appendChild(accordionHeader);
+  
+          const accordionCollapse = document.createElement('div');
+          accordionCollapse.id = collapseId;
+          accordionCollapse.className = 'accordion-collapse collapse';
+          accordionCollapse.setAttribute('aria-labelledby', headerId);
+          accordionCollapse.setAttribute('data-bs-parent', '#idLookupAccordion');
+  
+          const accordionBody = document.createElement('div');
+          accordionBody.className = 'accordion-body';
+  
+          // Create Table for Side-by-Side Comparison
+          const table = document.createElement('table');
+          table.className = 'table table-bordered table-sm';
+          const thead = document.createElement('thead');
+          const headerRow = document.createElement('tr');
+          const thField = document.createElement('th');
+          thField.scope = 'col';
+          thField.textContent = 'Field';
+          headerRow.appendChild(thField);
+          const thEntry1 = document.createElement('th');
+          thEntry1.scope = 'col';
+          thEntry1.textContent = `Entry1 (FindID1=${pair.FindID1 != null ? pair.FindID1 : 'N/A'})`;
+          headerRow.appendChild(thEntry1);
+          const thEntry2 = document.createElement('th');
+          thEntry2.scope = 'col';
+          thEntry2.textContent = `Entry2 (FindID2=${pair.FindID2 != null ? pair.FindID2 : 'N/A'})`;
+          headerRow.appendChild(thEntry2);
+          thead.appendChild(headerRow);
+          table.appendChild(thead);
+  
+          const tbody = document.createElement('tbody');
+          const fields = new Set();
+          if (pair.Entry1 && pair.Entry1.length > 0) { Object.keys(pair.Entry1[0]).forEach(key => fields.add(key)); }
+          if (pair.Entry2 && pair.Entry2.length > 0) { Object.keys(pair.Entry2[0]).forEach(key => fields.add(key)); }
+          fields.forEach(field => {
+            const tr = document.createElement('tr');
+            const tdField = document.createElement('td');
+            tdField.textContent = field;
+            tr.appendChild(tdField);
+            const tdEntry1 = document.createElement('td');
+            if (pair.Entry1 && pair.Entry1.length > 0 && pair.Entry1[0][field] != null) {
+              tdEntry1.textContent = pair.Entry1[0][field];
+            } else { tdEntry1.textContent = 'N/A'; tdEntry1.classList.add('text-danger'); }
+            tr.appendChild(tdEntry1);
+            const tdEntry2 = document.createElement('td');
+            if (pair.Entry2 && pair.Entry2.length > 0 && pair.Entry2[0][field] != null) {
+              tdEntry2.textContent = pair.Entry2[0][field];
+            } else { tdEntry2.textContent = 'N/A'; tdEntry2.classList.add('text-danger'); }
+            tr.appendChild(tdEntry2);
+            tbody.appendChild(tr);
+          });
+          table.appendChild(tbody);
+          accordionBody.appendChild(table);
+  
+          // Create a container for inline buttons with two groups: left for voting, right for manual verification
+          const buttonsDiv = document.createElement('div');
+          buttonsDiv.className = 'd-flex justify-content-between align-items-center mt-3 w-100';
+  
+          // Left group: vote container (vertical style)
+          const leftGroup = document.createElement('div');
+          leftGroup.className = 'd-flex align-items-center';
+  
+          const voteContainer = document.createElement('div');
+          voteContainer.className = 'vote-container';
+  
+          // Upvote Button (icon only)
+          const upvoteBtn = document.createElement('button');
+          upvoteBtn.innerHTML = `<i class="bi bi-caret-up-fill"></i>`;
+          upvoteBtn.onclick = async function() {
+            const userId = auth.currentUser.uid;
+            const voteRef = db.collection("find_results").doc(pair.id).collection("votes").doc(userId);
+            const mainDocRef = db.collection("find_results").doc(pair.id);
+            try {
+              const voteDoc = await voteRef.get();
+              if (voteDoc.exists) {
+                alert("You have already voted on this entry.");
+                return;
+              }
+              await db.runTransaction(async (transaction) => {
+                transaction.set(voteRef, { vote: 1 });
+                transaction.update(mainDocRef, {
+                  upvotes: firebase.firestore.FieldValue.increment(1)
+                });
+              });
+              pair.upvotes = (pair.upvotes || 0) + 1;
+              voteCount.innerHTML = `<span style="color:green;">${pair.upvotes}</span> | <span style="color:red;">${pair.downvotes || 0}</span>`;
+              alert("Upvoted!");
+            } catch (error) {
+              console.error("Error upvoting entry:", error);
+              alert("Failed to record upvote.");
+            }
+          };
+          voteContainer.appendChild(upvoteBtn);
+  
+          // Vote Count Display (numbers only, colored)
+          const voteCount = document.createElement('div');
+          voteCount.className = 'vote-count';
+          voteCount.innerHTML = `<span style="color:green;">${pair.upvotes}</span> | <span style="color:red;">${pair.downvotes}</span>`;
+          voteContainer.appendChild(voteCount);
+  
+          // Downvote Button (icon only)
+          const downvoteBtn = document.createElement('button');
+          downvoteBtn.innerHTML = `<i class="bi bi-caret-down-fill"></i>`;
+          downvoteBtn.onclick = async function() {
+            const userId = auth.currentUser.uid;
+            const voteRef = db.collection("find_results").doc(pair.id).collection("votes").doc(userId);
+            const mainDocRef = db.collection("find_results").doc(pair.id);
+            try {
+              const voteDoc = await voteRef.get();
+              if (voteDoc.exists) {
+                alert("You have already voted on this entry.");
+                return;
+              }
+              await db.runTransaction(async (transaction) => {
+                transaction.set(voteRef, { vote: -1 });
+                transaction.update(mainDocRef, {
+                  downvotes: firebase.firestore.FieldValue.increment(1)
+                });
+              });
+              pair.downvotes = (pair.downvotes || 0) + 1;
+              voteCount.innerHTML = `<span style="color:green;">${pair.upvotes || 0}</span> | <span style="color:red;">${pair.downvotes}</span>`;
+              alert("Downvoted!");
+            } catch (error) {
+              console.error("Error downvoting entry:", error);
+              alert("Failed to record downvote.");
+            }
+          };
+          voteContainer.appendChild(downvoteBtn);
+  
+          leftGroup.appendChild(voteContainer);
+  
+          // Right group: Manual Verification Button (aligned right) with "Verification" text
+          const rightGroup = document.createElement('div');
+          rightGroup.className = 'd-flex align-items-center';
+          if (pair.ManualVerificationLink) {
+            const linkBtn = document.createElement('a');
+            linkBtn.href = pair.ManualVerificationLink;
+            linkBtn.target = '_blank';
+            linkBtn.className = 'btn btn-primary';
+            linkBtn.innerHTML = `<i class="bi bi-info-circle"></i> Verification`;
+            rightGroup.appendChild(linkBtn);
+          }
+  
+          buttonsDiv.appendChild(leftGroup);
+          buttonsDiv.appendChild(rightGroup);
+          accordionBody.appendChild(buttonsDiv);
+          
+          accordionCollapse.appendChild(accordionBody);
+          accordionItem.appendChild(accordionCollapse);
+          accordion.appendChild(accordionItem);
+        });
+        contentDiv.innerHTML = '';
+        contentDiv.appendChild(accordion);
+      } catch (error) {
+         contentDiv.innerHTML = `<p class="error-message">Failed to load data: ${error}</p>`;
+      }
+    }
+  </script>
+</body>
+</html>

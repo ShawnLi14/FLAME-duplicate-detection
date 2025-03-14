@@ -43,7 +43,7 @@ def find_by_id_from_similarity_csv(file_path, similarity_output_path, output_fil
             for _, row in similarity_df.iterrows():
                 find_id1 = int(row["FindID1"])
                 find_id2 = int(row["FindID2"])
-                similarity_percentage = row["Similarity (%)"]
+                similarity_percentage = pd.to_numeric(row["Similarity (%)"], errors='coerce')
 
                 # Filter rows for the current pair
                 matching_rows1 = df[df["ID"] == find_id1]

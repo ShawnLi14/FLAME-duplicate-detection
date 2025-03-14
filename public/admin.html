@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>FLAME Duplicates - Admin Panel</title>
+  <!-- Bootstrap CSS -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <!-- Bootstrap Icons -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css" rel="stylesheet">
+  <style>
+    body { padding-top: 70px; padding-bottom: 20px; }
+    .error-message { color: red; font-weight: bold; }
+  </style>
+  
+  <!-- Firebase App, Firestore, and Auth (using compat libraries) -->
+  <script src="https://www.gstatic.com/firebasejs/11.3.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/11.3.1/firebase-firestore-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/11.3.1/firebase-auth-compat.js"></script>
+</head>
+<body>
+  <!-- Navigation Bar with Auth Dropdown -->
+  <nav class="navbar navbar-expand-lg navbar-dark bg-dark fixed-top">
+    <div class="container-fluid">
+      <a class="navbar-brand" href="index.html">FLAME Duplicates Database</a>
+      <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+        <span class="navbar-toggler-icon"></span>
+      </button>
+      <div class="collapse navbar-collapse" id="navbarNav">
+         <ul class="navbar-nav me-auto">
+           <li class="nav-item"><a class="nav-link" href="index.html">Active Entries</a></li>
+           <li class="nav-item"><a class="nav-link active" href="admin.html">Admin Panel</a></li>
+         </ul>
+         <ul class="navbar-nav" id="nav-auth">
+           <!-- Auth-related nav items will be injected here -->
+         </ul>
+      </div>
+    </div>
+  </nav>
+  
+  <div class="container">
+    <h1 class="mb-4">Admin Panel: Allowed Gmail Accounts</h1>
+    <div id="adminContent"></div>
+  </div>
+  
+  <!-- Bootstrap JS and dependencies -->
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+  
+  <script>
+    // TODO: Replace with your Firebase configuration
+    const firebaseConfig = {
+      apiKey: "AIzaSyCs7xdDST8IB1UnXyIf4pPpqDhV63kbx90",
+      authDomain: "flame-duplicates.firebaseapp.com",
+      projectId: "flame-duplicates",
+      storageBucket: "flame-duplicates.firebasestorage.app",
+      messagingSenderId: "165370416322",
+      appId: "1:165370416322:web:b02fea666c37ee3bbdff5b",
+      measurementId: "G-4D153C89DP"
+    };
+
+    // Initialize Firebase
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.firestore();
+    const auth = firebase.auth();
+
+    // DOM References
+    const navAuth = document.getElementById('nav-auth');
+    const adminContent = document.getElementById('adminContent');
+
+    // Google Sign-In using popup
+    function signInWithGoogle() {
+      const provider = new firebase.auth.GoogleAuthProvider();
+      auth.signInWithPopup(provider)
+        .then(result => { console.log('Signed in as:', result.user.email); })
+        .catch(error => { console.error('Error during sign-in:', error); });
+    }
+
+    // Update the navbar based on auth state
+    function updateNavbar(user) {
+      navAuth.innerHTML = ""; // Clear existing
+      if (user) {
+        // Show a dropdown with a person icon and the user's name, including a Log Out option
+        const dropdown = document.createElement('li');
+        dropdown.className = 'nav-item dropdown';
+        dropdown.innerHTML = `
+          <a class="nav-link dropdown-toggle" href="#" id="profileDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+            <i class="bi bi-person-circle"></i> ${user.displayName || user.email}
+          </a>
+          <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="profileDropdown">
+            <li><a class="dropdown-item" href="#" id="logoutBtn">Log Out</a></li>
+          </ul>
+        `;
+        navAuth.appendChild(dropdown);
+        document.getElementById('logoutBtn').addEventListener('click', () => {
+          auth.signOut().then(() => {
+            console.log('User signed out.');
+          }).catch(error => {
+            console.error('Error during sign out:', error);
+          });
+        });
+      } else {
+        // If not signed in, show a Sign In button
+        const signInItem = document.createElement('li');
+        signInItem.className = 'nav-item';
+        signInItem.innerHTML = `<button id="googleSignInBtn" class="btn btn-outline-light">Sign in with Google</button>`;
+        navAuth.appendChild(signInItem);
+        document.getElementById('googleSignInBtn').addEventListener('click', signInWithGoogle);
+      }
+    }
+
+    // Listen for authentication state changes
+    auth.onAuthStateChanged(user => {
+      updateNavbar(user);
+      if (user) {
+        // Get the ID token result to check custom claims
+        user.getIdTokenResult().then(idTokenResult => {
+          if (idTokenResult.claims.admin === true) {
+            // Authorized admin – load allowed emails settings
+            loadAllowedEmails();
+          } else {
+            adminContent.innerHTML = `<p class="error-message">Unauthorized: You do not have admin privileges.</p>`;
+            // Optionally sign out non-admins:
+            auth.signOut();
+          }
+        }).catch(error => {
+          console.error('Error retrieving ID token:', error);
+          adminContent.innerHTML = `<p class="error-message">Error verifying admin privileges.</p>`;
+        });
+      } else {
+        adminContent.innerHTML = `<p>Please sign in with Google to view the admin panel.</p>`;
+      }
+    });
+
+    // Load allowed emails from Firestore (from document settings/allowedEmails)
+    async function loadAllowedEmails() {
+      try {
+        const docRef = db.collection("settings").doc("allowedEmails");
+        const docSnap = await docRef.get();
+        let emails = [];
+        if (docSnap.exists) {
+          emails = docSnap.data().emails || [];
+        }
+        renderAllowedEmails(emails);
+      } catch (error) {
+        adminContent.innerHTML = `<p class="error-message">Error loading allowed emails: ${error}</p>`;
+      }
+    }
+
+    // Render the allowed emails list and the add-email form
+    function renderAllowedEmails(emails) {
+      adminContent.innerHTML = `
+        <h3>Allowed Email Accounts</h3>
+        <ul id="allowedList" class="list-group mb-3"></ul>
+        <h4>Add a new allowed email</h4>
+        <div class="input-group mb-3">
+          <input type="email" id="newEmailInput" class="form-control" placeholder="example@example.com" required>
+          <button class="btn btn-success" id="addEmailBtn">Add Email</button>
+        </div>
+      `;
+      const allowedList = document.getElementById("allowedList");
+      emails.forEach(email => {
+        const li = document.createElement("li");
+        li.className = "list-group-item d-flex justify-content-between align-items-center";
+        li.textContent = email;
+        const removeBtn = document.createElement("button");
+        removeBtn.className = "btn btn-danger btn-sm";
+        removeBtn.textContent = "Remove";
+        removeBtn.onclick = () => removeEmail(email, emails);
+        li.appendChild(removeBtn);
+        allowedList.appendChild(li);
+      });
+      document.getElementById("addEmailBtn").addEventListener("click", () => addEmail(emails));
+    }
+
+    // Add a new allowed email to Firestore
+    async function addEmail(currentEmails) {
+      const newEmail = document.getElementById("newEmailInput").value.trim().toLowerCase();
+      // Basic validation: check if there's an "@" symbol
+      if (!newEmail || !newEmail.includes("@")) {
+        alert("Please enter a valid email address.");
+        return;
+      }
+      if (currentEmails.includes(newEmail)) {
+        alert("This email is already allowed.");
+        return;
+      }
+      currentEmails.push(newEmail);
+      try {
+        await db.collection("settings").doc("allowedEmails").set({ emails: currentEmails });
+        alert("Email added successfully.");
+        loadAllowedEmails();
+      } catch (error) {
+        alert("Error adding email: " + error);
+      }
+    }
+
+    // Remove an allowed email from Firestore
+    async function removeEmail(emailToRemove, currentEmails) {
+      const newEmails = currentEmails.filter(email => email !== emailToRemove);
+      try {
+        await db.collection("settings").doc("allowedEmails").set({ emails: newEmails });
+        alert("Email removed successfully.");
+        loadAllowedEmails();
+      } catch (error) {
+        alert("Error removing email: " + error);
+      }
+    }
+  </script>
+</body>
+</html>

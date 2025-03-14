@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>FLAME Duplicates - Marked For Removal</title>
+  <!-- Bootstrap CSS -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <!-- Bootstrap Icons -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css" rel="stylesheet">
+  <style>
+    body { padding-top: 70px; padding-bottom: 20px; }
+    .error-message { color: red; font-weight: bold; }
+    .accordion-button:not(.collapsed) { color: #0d6efd; background-color: #e7f1ff; }
+    .manual-verification-btn { margin-top: 15px; }
+    table th, table td { vertical-align: middle !important; }
+  </style>
+  
+  <!-- Firebase App, Firestore and Auth (using compat libraries) -->
+  <script src="https://www.gstatic.com/firebasejs/11.3.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/11.3.1/firebase-firestore-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/11.3.1/firebase-auth-compat.js"></script>
+</head>
+<body>
+  <!-- Navigation Bar with Auth Dropdown -->
+  <nav class="navbar navbar-expand-lg navbar-dark bg-dark fixed-top">
+    <div class="container-fluid">
+      <a class="navbar-brand" href="index.html">FLAME Duplicates Database</a>
+      <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+        <span class="navbar-toggler-icon"></span>
+      </button>
+      <div class="collapse navbar-collapse" id="navbarNav">
+         <ul class="navbar-nav me-auto">
+           <li class="nav-item"><a class="nav-link" href="index.html">Active Entries</a></li>
+           <li class="nav-item"><a class="nav-link active" href="marked.html">Marked for Removal</a></li>
+         </ul>
+         <ul class="navbar-nav" id="nav-auth">
+           <!-- Auth-related nav items will be injected here -->
+         </ul>
+      </div>
+    </div>
+  </nav>
+  
+  <div class="container">
+    <h1 class="mb-4">FLAME Duplicates - Marked For Removal</h1>
+    <!-- Main Content -->
+    <div id="content"></div>
+  </div>
+  
+  <!-- Bootstrap JS and dependencies -->
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+  
+  <script>
+    // TODO: Replace with your Firebase configuration
+    const firebaseConfig = {
+      apiKey: "AIzaSyCs7xdDST8IB1UnXyIf4pPpqDhV63kbx90",
+      authDomain: "flame-duplicates.firebaseapp.com",
+      projectId: "flame-duplicates",
+      storageBucket: "flame-duplicates.firebasestorage.app",
+      messagingSenderId: "165370416322",
+      appId: "1:165370416322:web:b02fea666c37ee3bbdff5b",
+      measurementId: "G-4D153C89DP"
+    };
+
+    // Initialize Firebase
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.firestore();
+    const auth = firebase.auth();
+
+    // DOM References
+    const navAuth = document.getElementById('nav-auth');
+    const contentDiv = document.getElementById('content');
+
+    // Google Sign-In function using popup
+    function signInWithGoogle() {
+      const provider = new firebase.auth.GoogleAuthProvider();
+      auth.signInWithPopup(provider)
+        .then(result => { console.log('Signed in as:', result.user.email); })
+        .catch(error => { console.error('Error during sign-in:', error); });
+    }
+
+    // Update the navbar based on auth state (including admin dropdown)
+    async function updateNavbar(user) {
+      navAuth.innerHTML = ""; // Clear existing
+      if (user) {
+        // Retrieve the ID token result to check for custom claims (for admin status)
+        const tokenResult = await user.getIdTokenResult();
+        let adminLink = "";
+        if (tokenResult.claims.admin === true) {
+          adminLink = `<li><a class="dropdown-item" href="admin.html">Admin Panel</a></li>`;
+        }
+        const dropdown = document.createElement('li');
+        dropdown.className = 'nav-item dropdown';
+        dropdown.innerHTML = `
+          <a class="nav-link dropdown-toggle" href="#" id="profileDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+            <i class="bi bi-person-circle"></i> ${user.displayName || user.email}
+          </a>
+          <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="profileDropdown">
+            ${adminLink}
+            <li><a class="dropdown-item" href="#" id="logoutBtn">Log Out</a></li>
+          </ul>
+        `;
+        navAuth.appendChild(dropdown);
+        document.getElementById('logoutBtn').addEventListener('click', () => {
+          auth.signOut().then(() => {
+            console.log('User signed out.');
+          }).catch(error => {
+            console.error('Error during sign out:', error);
+          });
+        });
+      } else {
+        // If not signed in, show a Sign In button
+        const signInItem = document.createElement('li');
+        signInItem.className = 'nav-item';
+        signInItem.innerHTML = `<button id="googleSignInBtn" class="btn btn-outline-light">Sign in with Google</button>`;
+        navAuth.appendChild(signInItem);
+        document.getElementById('googleSignInBtn').addEventListener('click', signInWithGoogle);
+      }
+    }
+
+    // Listen for auth state changes
+    auth.onAuthStateChanged(user => {
+      updateNavbar(user);
+      if (user) {
+        fetchData();
+      } else {
+        contentDiv.innerHTML = "<p>Please sign in with Google to view the results.</p>";
+      }
+    });
+
+    // Fetch and display entries that are marked as deleted but not permanently removed
+    async function fetchData() {
+      try {
+        const querySnapshot = await db.collection("find_results").get();
+        let data = [];
+        querySnapshot.forEach(doc => {
+          let entry = doc.data();
+          entry.id = doc.id;
+          data.push(entry);
+        });
+        // Filter: Only show entries that are marked as deleted and NOT permanently deleted
+        data = data.filter(item => item.deleted && !item.permanent);
+        if (!data.length) {
+          contentDiv.innerHTML = `<p>No entries are currently marked for removal.</p>`;
+          return;
+        }
+        // Sort data by descending Similarity percentage
+        data.sort((a, b) => {
+          let simA = (a.Similarity != null) ? a.Similarity : 0;
+          let simB = (b.Similarity != null) ? b.Similarity : 0;
+          return simB - simA;
+        });
+
+        const accordion = document.createElement('div');
+        accordion.className = 'accordion';
+        accordion.id = 'idLookupAccordion';
+
+        data.forEach((pair, index) => {
+          const accordionItem = document.createElement('div');
+          accordionItem.className = 'accordion-item';
+
+          const headerId = `heading${index}`;
+          const collapseId = `collapse${index}`;
+          const accordionHeader = document.createElement('h2');
+          accordionHeader.className = 'accordion-header';
+          accordionHeader.id = headerId;
+
+          const accordionButton = document.createElement('button');
+          accordionButton.className = 'accordion-button collapsed';
+          accordionButton.type = 'button';
+          accordionButton.setAttribute('data-bs-toggle', 'collapse');
+          accordionButton.setAttribute('data-bs-target', `#${collapseId}`);
+          accordionButton.setAttribute('aria-expanded', 'false');
+          accordionButton.setAttribute('aria-controls', collapseId);
+          accordionButton.innerHTML = `
+            <strong>Pair ${index + 1}:</strong> 
+            FindID1=${pair.FindID1 != null ? pair.FindID1 : 'N/A'}, 
+            FindID2=${pair.FindID2 != null ? pair.FindID2 : 'N/A'}, 
+            Similarity=${pair.Similarity != null ? pair.Similarity.toFixed(2) + '%' : 'N/A'}
+          `;
+          accordionHeader.appendChild(accordionButton);
+          accordionItem.appendChild(accordionHeader);
+
+          const accordionCollapse = document.createElement('div');
+          accordionCollapse.id = collapseId;
+          accordionCollapse.className = 'accordion-collapse collapse';
+          accordionCollapse.setAttribute('aria-labelledby', headerId);
+          accordionCollapse.setAttribute('data-bs-parent', '#idLookupAccordion');
+
+          const accordionBody = document.createElement('div');
+          accordionBody.className = 'accordion-body';
+
+          // Create a table for side-by-side comparison
+          const table = document.createElement('table');
+          table.className = 'table table-bordered table-sm';
+          const thead = document.createElement('thead');
+          const headerRow = document.createElement('tr');
+          const thField = document.createElement('th');
+          thField.scope = 'col';
+          thField.textContent = 'Field';
+          headerRow.appendChild(thField);
+          const thEntry1 = document.createElement('th');
+          thEntry1.scope = 'col';
+          thEntry1.textContent = `Entry1 (FindID1=${pair.FindID1 != null ? pair.FindID1 : 'N/A'})`;
+          headerRow.appendChild(thEntry1);
+          const thEntry2 = document.createElement('th');
+          thEntry2.scope = 'col';
+          thEntry2.textContent = `Entry2 (FindID2=${pair.FindID2 != null ? pair.FindID2 : 'N/A'})`;
+          headerRow.appendChild(thEntry2);
+          thead.appendChild(headerRow);
+          table.appendChild(thead);
+
+          const tbody = document.createElement('tbody');
+          // Collect unique keys from both entries
+          const fields = new Set();
+          if (pair.Entry1 && pair.Entry1.length > 0) { Object.keys(pair.Entry1[0]).forEach(key => fields.add(key)); }
+          if (pair.Entry2 && pair.Entry2.length > 0) { Object.keys(pair.Entry2[0]).forEach(key => fields.add(key)); }
+          fields.forEach(field => {
+            const tr = document.createElement('tr');
+            const tdField = document.createElement('td');
+            tdField.textContent = field;
+            tr.appendChild(tdField);
+            const tdEntry1 = document.createElement('td');
+            if (pair.Entry1 && pair.Entry1.length > 0 && pair.Entry1[0][field] != null) {
+              tdEntry1.textContent = pair.Entry1[0][field];
+            } else { tdEntry1.textContent = 'N/A'; tdEntry1.classList.add('text-danger'); }
+            tr.appendChild(tdEntry1);
+            const tdEntry2 = document.createElement('td');
+            if (pair.Entry2 && pair.Entry2.length > 0 && pair.Entry2[0][field] != null) {
+              tdEntry2.textContent = pair.Entry2[0][field];
+            } else { tdEntry2.textContent = 'N/A'; tdEntry2.classList.add('text-danger'); }
+            tr.appendChild(tdEntry2);
+            tbody.appendChild(tr);
+          });
+          table.appendChild(tbody);
+          accordionBody.appendChild(table);
+
+          // Create a container for inline buttons
+          const buttonsDiv = document.createElement('div');
+          buttonsDiv.className = 'd-flex align-items-center mt-3';
+
+          // Manual Verification Button (if available)
+          if (pair.ManualVerificationLink) {
+            const linkBtn = document.createElement('a');
+            linkBtn.href = pair.ManualVerificationLink;
+            linkBtn.target = '_blank';
+            linkBtn.className = 'btn btn-primary me-2';
+            linkBtn.textContent = 'Manual Verification';
+            buttonsDiv.appendChild(linkBtn);
+          }
+
+          // "Unmark Removal" button (sets deleted: false)
+          const unmarkBtn = document.createElement('button');
+          unmarkBtn.className = 'btn btn-success me-2';
+          unmarkBtn.textContent = 'Unmark Removal';
+          unmarkBtn.onclick = async function() {
+            if (confirm('Are you sure you want to unmark this entry?')) {
+              try {
+                await db.collection("find_results").doc(pair.id).update({ deleted: false });
+                alert('Entry unmarked.');
+                accordionItem.remove();
+              } catch (error) {
+                console.error('Error unmarking entry:', error);
+                alert('Failed to unmark entry.');
+              }
+            }
+          };
+          buttonsDiv.appendChild(unmarkBtn);
+
+          // "Mark as Deleted from Database" button (sets permanent: true)
+          const permanentBtn = document.createElement('button');
+          permanentBtn.className = 'btn btn-danger';
+          permanentBtn.textContent = 'Mark as Deleted from Database';
+          permanentBtn.onclick = async function() {
+            if (confirm('Are you sure you want to permanently mark this entry as deleted? This action cannot be undone.')) {
+              try {
+                await db.collection("find_results").doc(pair.id).update({ permanent: true });
+                alert('Entry permanently marked as deleted.');
+                accordionItem.remove();
+              } catch (error) {
+                console.error('Error permanently marking entry as deleted:', error);
+                alert('Failed to permanently mark entry as deleted.');
+              }
+            }
+          };
+          buttonsDiv.appendChild(permanentBtn);
+
+          // Append the buttons container to the accordion body
+          accordionBody.appendChild(buttonsDiv);
+          
+          accordionCollapse.appendChild(accordionBody);
+          accordionItem.appendChild(accordionCollapse);
+          accordion.appendChild(accordionItem);
+        });
+        contentDiv.innerHTML = '';
+        contentDiv.appendChild(accordion);
+      } catch (error) {
+        contentDiv.innerHTML = `<p class="error-message">Failed to load data: ${error}</p>`;
+      }
+    }
+  </script>
+</body>
+</html>
