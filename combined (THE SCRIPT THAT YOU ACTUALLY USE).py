@@ -47,10 +47,32 @@ def replace_nan(obj):
     else:
         return obj
 
-def find_by_id_from_similarity_csv(file_path, similarity_output_path, output_file):
+def levenshtein_distance(s1, s2):
+    """
+    Compute the Levenshtein distance between two strings.
+    """
+    if s1 is None: s1 = ""
+    if s2 is None: s2 = ""
+    if len(s1) < len(s2):
+        return levenshtein_distance(s2, s1)
+    # Now, len(s1) >= len(s2)
+    if len(s2) == 0:
+        return len(s1)
+    previous_row = range(len(s2) + 1)
+    for i, c1 in enumerate(s1):
+        current_row = [i + 1]
+        for j, c2 in enumerate(s2):
+            insertions = previous_row[j + 1] + 1
+            deletions = current_row[j] + 1
+            substitutions = previous_row[j] + (c1 != c2)
+            current_row.append(min(insertions, deletions, substitutions))
+        previous_row = current_row
+    return previous_row[-1]
+
+def find_by_id_from_similarity_csv(file_path, similarity_output_path, output_file, coin_groups_path):
     """
     Finds entries in the CSV file corresponding to each pair of IDs from the similarity output,
-    writes the results to a JSON file, and includes similarity percentages.
+    attaches the coin groups data for each coinfind, and writes the results to a JSON file.
     
     Returns:
         The cleaned lookup results as a list of dictionaries.
@@ -82,13 +104,16 @@ def find_by_id_from_similarity_csv(file_path, similarity_output_path, output_fil
                 json.dump({"error": error_message}, f, indent=4)
             return None
 
+        # Read the CoinGroups.csv file.
+        coin_groups = pd.read_csv(coin_groups_path, encoding="utf-8")
         results = []
         # Process each pair.
         for _, row in similarity_df.iterrows():
             find_id1 = row.get("FindID1")
             find_id2 = row.get("FindID2")
             similarity_percentage = row.get("Similarity (%)")
-
+            tags = row.get("Tags") if "Tags" in row else ""
+            
             try:
                 find_id1 = int(find_id1)
             except (ValueError, TypeError):
@@ -106,15 +131,25 @@ def find_by_id_from_similarity_csv(file_path, similarity_output_path, output_fil
             except (ValueError, TypeError):
                 similarity_percentage = None
 
+            # Convert tags from semicolon-separated string to list (if present)
+            if tags and isinstance(tags, str):
+                tag_list = [tag.strip() for tag in tags.split(";") if tag.strip()]
+            else:
+                tag_list = []
+                
             if find_id1 is not None:
                 matching_rows1 = df[df["ID"] == find_id1].to_dict(orient='records')
+                coin_groups1 = coin_groups[coin_groups["cfID"] == find_id1].to_dict(orient='records')
             else:
                 matching_rows1 = None
+                coin_groups1 = None
 
             if find_id2 is not None:
                 matching_rows2 = df[df["ID"] == find_id2].to_dict(orient='records')
+                coin_groups2 = coin_groups[coin_groups["cfID"] == find_id2].to_dict(orient='records')
             else:
                 matching_rows2 = None
+                coin_groups2 = None
 
             if find_id1 is not None and find_id2 is not None:
                 manual_verification_link = f"http://csla100w.princeton.edu:82/?FindFocusIDs={find_id1},{find_id2}"
@@ -125,8 +160,11 @@ def find_by_id_from_similarity_csv(file_path, similarity_output_path, output_fil
                 "FindID1": find_id1,
                 "FindID2": find_id2,
                 "Similarity": similarity_percentage,
+                "Tags": tag_list,
                 "Entry1": matching_rows1 if matching_rows1 else None,
                 "Entry2": matching_rows2 if matching_rows2 else None,
+                "CoinGroups1": coin_groups1 if coin_groups1 else None,
+                "CoinGroups2": coin_groups2 if coin_groups2 else None,
                 "ManualVerificationLink": manual_verification_link
             }
             results.append(result)
@@ -179,10 +217,13 @@ def calculate_similarity_between_pairs(
     Calculates percent similarity between pairs of suspicious CoinFinds based on CoinGroups attribution,
     weighting by the number of coins in each coin group (using the "cg_num_coins" parameter)
     and adjusting the contribution of each similar coingroup by comparing the coin counts.
-    Writes the similarity results to a CSV file.
+    Also computes "tags" for each pair based on additional criteria:
+      - "Highly Similar": when the cf_name differ by less than 3 characters (Levenshtein distance)
+        or the IDs differ by less than 5.
+      - "Mixed Source": when one entry's cf_user is "CHRE" and the other's is "PAS UK Finds".
+    Writes the similarity results (including tags) to a CSV file.
     """
     try:
-        import pandas as pd
         from itertools import combinations
         from tqdm import tqdm
 
@@ -205,6 +246,9 @@ def calculate_similarity_between_pairs(
             y_col, 
             "cf_publication_ref"
         ] + coin_finds_compare_columns
+        for extra in ["cf_name", "cf_user"]:
+            if extra not in coin_finds.columns:
+                required_coin_finds_columns.append(extra)
         for column in required_coin_finds_columns:
             if column not in coin_finds.columns:
                 with open(output_file, 'w', encoding='utf-8') as f:
@@ -292,7 +336,6 @@ def calculate_similarity_between_pairs(
                         on=similarity_columns_coin_groups, suffixes=('_1', '_2')
                     )
                     # Compute per-group similarity factor:
-                    # If max is 0 (i.e. both coin counts are 0), return 1 to avoid division by zero.
                     merged["group_similarity_factor"] = merged.apply(
                         lambda row: (min(row["cg_num_coins_1"], row["cg_num_coins_2"]) / max(row["cg_num_coins_1"], row["cg_num_coins_2"])) 
                                     if max(row["cg_num_coins_1"], row["cg_num_coins_2"]) != 0 else 1, axis=1
@@ -306,8 +349,21 @@ def calculate_similarity_between_pairs(
                     union_weight = total_weight1 + total_weight2 - unadjusted_intersection
                     effective_similarity = (effective_intersection_weight / union_weight) * 100 if union_weight > 0 else 0
 
+                    # Determine tags.
+                    tags = []
+                    # Tag: "Highly Similar" if cf_name differ by < 3 characters OR IDs differ by < 5.
+                    cf_name1 = str(find1.get("cf_name", ""))
+                    cf_name2 = str(find2.get("cf_name", ""))
+                    if levenshtein_distance(cf_name1, cf_name2) < 3 or abs(find1["ID"] - find2["ID"]) < 5:
+                        tags.append("Highly Similar")
+                    # Tag: "Mixed Source" if one cf_user is "CHRE" and the other is "PAS UK Finds".
+                    cf_user1 = str(find1.get("cf_user", "")).strip()
+                    cf_user2 = str(find2.get("cf_user", "")).strip()
+                    if (cf_user1 == "CHRE" and cf_user2 == "PAS UK Finds") or (cf_user1 == "PAS UK Finds" and cf_user2 == "CHRE"):
+                        tags.append("Mixed Source")
+
                     if effective_similarity > 0:
-                        results.append((find1["ID"], find2["ID"], effective_similarity))
+                        results.append((find1["ID"], find2["ID"], effective_similarity, ";".join(tags)))
                 except Exception as e:
                     print(f"Error processing pair ({idx1}, {idx2}): {e}")
                 finally:
@@ -316,9 +372,9 @@ def calculate_similarity_between_pairs(
         sorted_results = sorted(results, key=lambda x: x[2], reverse=True)
         with open(output_file, 'w', encoding='utf-8') as f:
             if sorted_results:
-                f.write("FindID1,FindID2,Similarity (%)\n")
-                for find_id1, find_id2, similarity in sorted_results:
-                    f.write(f"{find_id1},{find_id2},{similarity:.2f}\n")
+                f.write("FindID1,FindID2,Similarity (%),Tags\n")
+                for find_id1, find_id2, similarity, tags in sorted_results:
+                    f.write(f"{find_id1},{find_id2},{similarity:.2f},{tags}\n")
             else:
                 f.write("No pairs with non-zero similarity to compare.\n")
         print(f"Pairwise similarity results written to {output_file}")
@@ -330,7 +386,6 @@ def calculate_similarity_between_pairs(
         with open(output_file, 'w', encoding='utf-8') as f:
             f.write(f"An error occurred: {e}\n")
 
-
 if __name__ == "__main__":
     # -----------------------------------------------------------------------------
     # File Paths and Parameters (Update these paths as needed)
@@ -341,9 +396,8 @@ if __name__ == "__main__":
     
     # Parameters for similarity calculation.
     similarity_columns_coin_groups = ["cg_start_year", "cg_end_year", "DenominationName", "Mint"]
-    coin_finds_compare_columns = ["cf_single_find", "cf_hoard", "cf_vague"]  # Specify additional columns to check for an exact match if needed.
-
-    # -----------------------------------------------------------------------------
+    coin_finds_compare_columns = ["cf_single_find", "cf_hoard", "cf_vague"]  # Additional columns for exact match.
+    
     # Process 1: Calculate similarity between CoinFind pairs.
     calculate_similarity_between_pairs(
         coin_groups_path=coin_groups_path,
@@ -358,15 +412,14 @@ if __name__ == "__main__":
         output_file=similarity_output_path
     )
 
-    # -----------------------------------------------------------------------------
-    # Process 2: Look up CoinFind entries based on the similarity CSV.
-    # id_lookup_results = find_by_id_from_similarity_csv(
-    #     file_path=coin_finds_path,
-    #     similarity_output_path=similarity_output_path,
-    #     output_file=id_lookup_output_file
-    # )
+    # Process 2: Look up CoinFind entries based on the similarity CSV and attach coin group data.
+    id_lookup_results = find_by_id_from_similarity_csv(
+        file_path=coin_finds_path,
+        similarity_output_path=similarity_output_path,
+        output_file=id_lookup_output_file,
+        coin_groups_path=coin_groups_path
+    )
 
-    # -----------------------------------------------------------------------------
     # Process 3: Export the lookup results to Firebase Firestore.
-    # if id_lookup_results:
-    #     export_to_firestore(id_lookup_results, collection_name="find_results")
+    if id_lookup_results:
+        export_to_firestore(id_lookup_results, collection_name="find_results")
