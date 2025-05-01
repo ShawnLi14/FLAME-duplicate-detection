@@ -9,7 +9,7 @@ admin.initializeApp({
 });
 
 // Replace with your user's UID
-const uid = 'yrYUsCggCFb9FZkBwsaheJ4Ywdu1';
+const uid = '5Oe8NEmjBXa9uxK2Up2up4Jp2Sx2';
 
 admin.auth().setCustomUserClaims(uid, { admin: true })
   .then(() => {

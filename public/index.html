@@ -12,7 +12,6 @@
     .error-message { color: red; font-weight: bold; }
     .accordion-button:not(.collapsed) { color: #0d6efd; background-color: #e7f1ff; }
     table th, table td { vertical-align: middle !important; }
-    /* Vote UI styling similar to Reddit/StackOverflow */
     .vote-container {
       display: flex;
       flex-direction: column;
@@ -34,18 +33,16 @@
       font-weight: bold;
       margin: 0.25rem 0;
     }
-    /* Active filter tags container */
     #activeFilters {
       display: inline-block;
       margin-left: 1rem;
       vertical-align: middle;
     }
     #activeFilters .filter-badge { cursor: pointer; }
-    /* Loading spinner styling */
     #loading { text-align: center; margin-top: 2rem; }
   </style>
   
-  <!-- Firebase App, Firestore and Auth (using compat libraries) -->
+  <!-- Firebase App, Firestore and Auth -->
   <script src="https://www.gstatic.com/firebasejs/11.3.1/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/11.3.1/firebase-firestore-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/11.3.1/firebase-auth-compat.js"></script>
@@ -69,7 +66,6 @@
   
   <div class="container">
     <h1 class="mb-4">FLAME Duplicates - Active Entries</h1>
-    <!-- Sorting Dropdown and Filtering Section (unchanged from previous version) -->
     <div class="mb-3">
       <label for="sortDropdown" class="form-label"><strong>Sort By:</strong></label>
       <select id="sortDropdown" class="form-select" style="width: auto; display: inline-block;">
@@ -91,7 +87,6 @@
       <div id="activeFilters"></div>
       <button id="applyFilterBtn" class="btn btn-primary btn-sm ms-2">Apply Filters</button>
     </div>
-    <!-- Loading Spinner -->
     <div id="loading" style="display: none;">
       <div class="spinner-border" role="status">
         <span class="visually-hidden">Loading...</span>
@@ -99,7 +94,6 @@
       <br>
       <span>Loading entries...</span>
     </div>
-    <!-- Main Content -->
     <div id="content"></div>
   </div>
   
@@ -141,11 +135,37 @@
     </div>
   </div>
 
+  <!-- Voters List Modal -->
+  <div class="modal fade" id="voteListModal" tabindex="-1" aria-labelledby="voteListModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-md modal-dialog-centered">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title" id="voteListModalLabel">Voters</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          <table class="table table-sm" id="voteListTable">
+            <thead>
+              <tr>
+                <th>Email</th>
+                <th>Vote</th>
+              </tr>
+            </thead>
+            <tbody><!-- filled dynamically --></tbody>
+          </table>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Close</button>
+        </div>
+      </div>
+    </div>
+  </div>
+  
   <!-- Bootstrap JS and dependencies -->
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
   
   <script>
-    // TODO: Replace with your Firebase configuration
+    // Firebase init
     const firebaseConfig = {
       apiKey: "AIzaSyCs7xdDST8IB1UnXyIf4pPpqDhV63kbx90",
       authDomain: "flame-duplicates.firebaseapp.com",
@@ -155,13 +175,11 @@
       appId: "1:165370416322:web:b02fea666c37ee3bbdff5b",
       measurementId: "G-4D153C89DP"
     };
-
-    // Initialize Firebase
     firebase.initializeApp(firebaseConfig);
     const db = firebase.firestore();
     const auth = firebase.auth();
 
-    // DOM References
+    // DOM refs
     const navAuth = document.getElementById('nav-auth');
     const contentDiv = document.getElementById('content');
     const sortDropdown = document.getElementById('sortDropdown');
@@ -169,585 +187,498 @@
     const activeFiltersDiv = document.getElementById('activeFilters');
     const applyFilterBtn = document.getElementById('applyFilterBtn');
     const loadingDiv = document.getElementById('loading');
-    
-    // Modal references for coin groups comparison.
-    const coinGroupsModal = new bootstrap.Modal(document.getElementById('coinGroupsModal'));
-    const coinGroupsTable1Body = document.querySelector('#coinGroupsTable1 tbody');
-    const coinGroupsTable2Body = document.querySelector('#coinGroupsTable2 tbody');
 
-    // Use URL parameters to pre-populate sort and filter.
+    // Modals
+    const coinGroupsModal = new bootstrap.Modal(document.getElementById('coinGroupsModal'));
+    const voteListModal   = new bootstrap.Modal(document.getElementById('voteListModal'));
+    const voteListTableBody = document.querySelector('#voteListTable tbody');
+
+    // URL params
     const urlParams = new URLSearchParams(window.location.search);
-    const currentSort = urlParams.get("sortby") || "similarity";
-    sortDropdown.value = currentSort;
+    sortDropdown.value = urlParams.get("sortby") || "similarity";
     let activeFilters = [];
-    const filterParam = urlParams.get("filter");
-    if(filterParam) {
-      activeFilters = filterParam.split(",").map(s => s.trim());
+    if (urlParams.get("filter")) {
+      activeFilters = urlParams.get("filter").split(",").map(s => s.trim());
       updateActiveFiltersDisplay();
     }
 
-    // When the sort option changes, update the URL parameter and reload the page.
-    sortDropdown.addEventListener('change', function() {
-      urlParams.set("sortby", this.value);
+    // Sorting & filtering handlers
+    sortDropdown.addEventListener('change', () => {
+      urlParams.set("sortby", sortDropdown.value);
       window.location.search = urlParams.toString();
     });
-
-    // When an option is selected from the filter dropdown, add it if not already selected.
-    filterDropdown.addEventListener('change', function() {
-      const selectedValue = this.value;
-      if(selectedValue && !activeFilters.includes(selectedValue)) {
-        activeFilters.push(selectedValue);
+    filterDropdown.addEventListener('change', () => {
+      const val = filterDropdown.value;
+      if (val && !activeFilters.includes(val)) {
+        activeFilters.push(val);
         updateActiveFiltersDisplay();
       }
-      this.value = "";
+      filterDropdown.value = "";
     });
-
-    // Update active filters display.
+    applyFilterBtn.addEventListener("click", () => {
+      if (activeFilters.length) urlParams.set("filter", activeFilters.join(","));
+      else urlParams.delete("filter");
+      window.location.search = urlParams.toString();
+    });
     function updateActiveFiltersDisplay() {
       activeFiltersDiv.innerHTML = "";
-      activeFilters.forEach((filter, index) => {
-        let badgeClass = "bg-secondary";
-        if(filter === "Adjacent Find") badgeClass = "bg-primary";
-        else if(filter === "Mixed Source") badgeClass = "bg-warning";
-        else if(filter === "Confirmed") badgeClass = "bg-success";
-        else if(filter === "Unconfirmed") badgeClass = "bg-dark";
-        else if(filter === "Not Duplicate") badgeClass = "bg-danger";
-        const badge = document.createElement("span");
-        badge.className = `badge ${badgeClass} me-1 filter-badge`;
-        badge.style.cursor = "pointer";
-        badge.innerHTML = `${filter} <i class="bi bi-x-circle-fill"></i>`;
-        badge.onclick = () => {
-          activeFilters.splice(index, 1);
-          updateActiveFiltersDisplay();
-        };
-        activeFiltersDiv.appendChild(badge);
+      activeFilters.forEach((filter, i) => {
+        let cls = "bg-secondary";
+        if (filter==="Adjacent Find") cls="bg-primary";
+        else if(filter==="Mixed Source") cls="bg-warning";
+        else if(filter==="Confirmed") cls="bg-success";
+        else if(filter==="Unconfirmed") cls="bg-dark";
+        else if(filter==="Not Duplicate") cls="bg-danger";
+        const span = document.createElement("span");
+        span.className = `badge ${cls} me-1 filter-badge`;
+        span.innerHTML = `${filter} <i class="bi bi-x-circle-fill"></i>`;
+        span.onclick = () => { activeFilters.splice(i,1); updateActiveFiltersDisplay(); };
+        activeFiltersDiv.appendChild(span);
       });
     }
 
-    // When "Apply Filters" is clicked, update the URL parameter and reload the page.
-    applyFilterBtn.addEventListener("click", function() {
-      if(activeFilters.length > 0) {
-        urlParams.set("filter", activeFilters.join(","));
-      } else {
-        urlParams.delete("filter");
-      }
-      window.location.search = urlParams.toString();
-    });
-
-    // Google Sign-In function.
+    // Auth
     function signInWithGoogle() {
       const provider = new firebase.auth.GoogleAuthProvider();
-      auth.signInWithPopup(provider)
-        .then(result => { console.log('Signed in as:', result.user.email); })
-        .catch(error => { console.error('Error during sign-in:', error); });
+      auth.signInWithPopup(provider).catch(console.error);
     }
-
-    // Update the navbar based on auth state.
     async function updateNavbar(user) {
       navAuth.innerHTML = "";
       if (user) {
-        const tokenResult = await user.getIdTokenResult();
-        let adminLink = "";
-        if (tokenResult.claims.admin === true) {
-          adminLink = `<li><a class="dropdown-item" href="admin.html">Admin Panel</a></li>`;
-        }
-        const dropdown = document.createElement('li');
-        dropdown.className = 'nav-item dropdown';
-        dropdown.innerHTML = `
-          <a class="nav-link dropdown-toggle" href="#" id="profileDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
-            <i class="bi bi-person-circle"></i> ${user.displayName || user.email}
+        const tokenRes = await user.getIdTokenResult();
+        let adminLink = tokenRes.claims.admin
+          ? `<li><a class="dropdown-item" href="admin.html">Admin Panel</a></li>`
+          : "";
+        const li = document.createElement("li");
+        li.className = "nav-item dropdown";
+        li.innerHTML = `
+          <a class="nav-link dropdown-toggle" href="#" id="profileDropdown" data-bs-toggle="dropdown">
+            <i class="bi bi-person-circle"></i> ${user.displayName||user.email}
           </a>
           <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="profileDropdown">
             ${adminLink}
             <li><a class="dropdown-item" href="#" id="logoutBtn">Log Out</a></li>
           </ul>
         `;
-        navAuth.appendChild(dropdown);
+        navAuth.appendChild(li);
         document.getElementById('logoutBtn').addEventListener('click', () => {
-          auth.signOut().then(() => { console.log('User signed out.'); })
-          .catch(error => { console.error('Error during sign out:', error); });
+          auth.signOut().catch(console.error);
         });
       } else {
-        const signInItem = document.createElement('li');
-        signInItem.className = 'nav-item';
-        signInItem.innerHTML = `<button id="googleSignInBtn" class="btn btn-outline-light">Sign in with Google</button>`;
-        navAuth.appendChild(signInItem);
+        const li = document.createElement("li");
+        li.className = "nav-item";
+        li.innerHTML = `<button id="googleSignInBtn" class="btn btn-outline-light">Sign in with Google</button>`;
+        navAuth.appendChild(li);
         document.getElementById('googleSignInBtn').addEventListener('click', signInWithGoogle);
       }
     }
-
     auth.onAuthStateChanged(user => {
       updateNavbar(user);
-      if (user) { fetchData(); }
-      else { contentDiv.innerHTML = "<p>Please sign in with Google to view the results.</p>"; }
+      if (user) fetchData();
+      else contentDiv.innerHTML = "<p>Please sign in with Google to view the results.</p>";
     });
 
-    // Function to show coin groups comparison modal.
+    // Show Coin Groups Comparison (unchanged)
     function showCoinGroups(pair) {
-      // Get the comparison table body.
       const tableBody = document.querySelector('#coinGroupsComparisonTable tbody');
       tableBody.innerHTML = "";
-      
-      // Retrieve coin groups for both entries.
-      const cg1 = pair.CoinGroups1 || [];
-      const cg2 = pair.CoinGroups2 || [];
-      
-      // Create dictionaries keyed by a composite key.
-      // We'll use JSON.stringify on an array of the four fields.
-      const dict1 = {};
-      cg1.forEach(item => {
-        const key = JSON.stringify([item["cg_start_year"], item["cg_end_year"], item["cg_num_coins"], item["Mint"]]);
-        dict1[key] = item;
+      const cg1 = pair.CoinGroups1||[], cg2 = pair.CoinGroups2||[];
+      const dict1 = {}, dict2 = {};
+      cg1.forEach(i=> dict1[JSON.stringify([i.cg_start_year,i.cg_end_year,i.cg_num_coins,i.Mint])] = i);
+      cg2.forEach(i=> dict2[JSON.stringify([i.cg_start_year,i.cg_end_year,i.cg_num_coins,i.Mint])] = i);
+      const keys = Array.from(new Set([...Object.keys(dict1),...Object.keys(dict2)])).sort();
+      keys.forEach(key=>{
+        const g1 = dict1[key], g2 = dict2[key];
+        const tr = document.createElement("tr");
+        if (g1 && g2) tr.classList.add("table-success");
+        [g1,g2].forEach(g=>{
+          if (g) {
+            ["cg_start_year","cg_end_year","cg_num_coins","Mint"].forEach(f=>{
+              const td = document.createElement("td");
+              td.textContent = g[f];
+              tr.appendChild(td);
+            });
+          } else {
+            for(let i=0;i<4;i++){
+              const td=document.createElement("td");
+              td.textContent="";
+              tr.appendChild(td);
+            }
+          }
+        });
+        tableBody.appendChild(tr);
       });
-      
-      const dict2 = {};
-      cg2.forEach(item => {
-        const key = JSON.stringify([item["cg_start_year"], item["cg_end_year"], item["cg_num_coins"], item["Mint"]]);
-        dict2[key] = item;
-      });
-      
-      // Build union of keys.
-      const keysSet = new Set([...Object.keys(dict1), ...Object.keys(dict2)]);
-      let keysArray = Array.from(keysSet);
-      // Sort keys lexicographically.
-      keysArray.sort();
-      
-      // For each key, build a row with data from dict1 and dict2.
-      keysArray.forEach(key => {
-        const row = document.createElement("tr");
-        const group1 = dict1[key] || null;
-        const group2 = dict2[key] || null;
-        
-        // If both exist, highlight the row.
-        if (group1 && group2) {
-          row.classList.add("table-success");
-        }
-        
-        // Create cells for Entry1 (or empty if not available)
-        const [start1, end1, num1, metal1] = group1 ? [group1["cg_start_year"], group1["cg_end_year"], group1["cg_num_coins"], group1["Mint"]] : ["", "", "", ""];
-        const cell1 = document.createElement("td");
-        cell1.textContent = start1;
-        row.appendChild(cell1);
-        const cell2 = document.createElement("td");
-        cell2.textContent = end1;
-        row.appendChild(cell2);
-        const cell3 = document.createElement("td");
-        cell3.textContent = num1;
-        row.appendChild(cell3);
-        const cell4 = document.createElement("td");
-        cell4.textContent = metal1;
-        row.appendChild(cell4);
-        
-        // Create cells for Entry2 (or empty if not available)
-        const [start2, end2, num2, metal2] = group2 ? [group2["cg_start_year"], group2["cg_end_year"], group2["cg_num_coins"], group2["Mint"]] : ["", "", "", ""];
-        const cell5 = document.createElement("td");
-        cell5.textContent = start2;
-        row.appendChild(cell5);
-        const cell6 = document.createElement("td");
-        cell6.textContent = end2;
-        row.appendChild(cell6);
-        const cell7 = document.createElement("td");
-        cell7.textContent = num2;
-        row.appendChild(cell7);
-        const cell8 = document.createElement("td");
-        cell8.textContent = metal2;
-        row.appendChild(cell8);
-        
-        tableBody.appendChild(row);
-      });
-      
-      // Show the modal.
       coinGroupsModal.show();
-    }    
+    }
 
-    // Fetch and display active entries.
+    // Show Voters
+    async function showVoters(pair) {
+      voteListTableBody.innerHTML = "";
+      try {
+        const snap = await db
+          .collection("find_results")
+          .doc(pair.id)
+          .collection("votes")
+          .get();
+        if (snap.empty) {
+          voteListTableBody.innerHTML = `<tr><td colspan="2" class="text-center">No votes yet.</td></tr>`;
+        } else {
+          snap.forEach(doc => {
+            const { vote, email } = doc.data();
+            const tr = document.createElement("tr");
+            const tdE = document.createElement("td");
+            tdE.textContent = email || "(unknown)";
+            const tdV = document.createElement("td");
+            tdV.textContent = vote === 1 ? "👍 Upvote" : "👎 Downvote";
+            tr.appendChild(tdE);
+            tr.appendChild(tdV);
+            voteListTableBody.appendChild(tr);
+          });
+        }
+      } catch (e) {
+        console.error("Error loading votes:", e);
+        voteListTableBody.innerHTML = `<tr><td colspan="2" class="text-danger">Failed to load voters.</td></tr>`;
+      }
+      voteListModal.show();
+    }
+
+    // Fetch & render entries
     async function fetchData() {
       try {
-        // Show loading spinner.
         loadingDiv.style.display = "block";
         contentDiv.innerHTML = "";
-        
-        const querySnapshot = await db.collection("find_results").get();
+        const snap = await db.collection("find_results").get();
         let data = [];
-        querySnapshot.forEach(doc => {
-          let entry = doc.data();
-          entry.id = doc.id;
-          entry.upvotes = entry.upvotes || 0;
-          entry.downvotes = entry.downvotes || 0;
-          // Use duplicateStatus with default "unconfirmed"
-          if (entry.duplicateStatus === undefined) { entry.duplicateStatus = "unconfirmed"; }
-          data.push(entry);
+        snap.forEach(doc=>{
+          let d = doc.data();
+          d.id = doc.id;
+          d.upvotes = d.upvotes||0;
+          d.downvotes = d.downvotes||0;
+          d.duplicateStatus = d.duplicateStatus||"unconfirmed";
+          if (!d.deleted && !d.permanent) data.push(d);
         });
-        data = data.filter(item => !item.deleted && !item.permanent);
         if (!data.length) {
-          contentDiv.innerHTML = `<p>No active entries available to display.</p>`;
+          contentDiv.innerHTML = "<p>No active entries available to display.</p>";
           loadingDiv.style.display = "none";
           return;
         }
-  
-        // Sorting logic.
-        const sortBy = urlParams.get("sortby") || "similarity";
-        if (sortBy === "similarity") {
-          data.sort((a, b) => {
-            let simA = (a.Similarity != null) ? a.Similarity : 0;
-            let simB = (b.Similarity != null) ? b.Similarity : 0;
-            return simB - simA;
-          });
-        } else if (sortBy === "upvotes") {
-          data.sort((a, b) => (b.upvotes || 0) - (a.upvotes || 0));
-        } else if (sortBy === "downvotes") {
-          data.sort((a, b) => (b.downvotes || 0) - (a.downvotes || 0));
+        // Sorting
+        const sortBy = urlParams.get("sortby")||"similarity";
+        if (sortBy==="similarity") {
+          data.sort((a,b)=>(b.Similarity||0)-(a.Similarity||0));
+        } else if (sortBy==="upvotes") {
+          data.sort((a,b)=>b.upvotes-a.upvotes);
+        } else {
+          data.sort((a,b)=>b.downvotes-a.downvotes);
         }
-  
-        // Filtering logic.
-        let selectedFilters = [];
-        const filterParam = urlParams.get("filter");
-        if (filterParam) {
-          selectedFilters = filterParam.split(",").map(s => s.trim());
-        }
-        if (selectedFilters.length > 0) {
-          data = data.filter(pair => {
-            // Normalize tags.
-            let rawTags = pair.Tags || "";
-            let tagsArray = [];
-            if (Array.isArray(rawTags)) { 
-              tagsArray = rawTags; 
-            } else if (typeof rawTags === "string") {
-              tagsArray = rawTags.split(";").map(tag => tag.trim()).filter(tag => tag.length > 0);
-            }
-            // Normalize "Highly Similar" to "Adjacent Find".
-            tagsArray = tagsArray.map(tag => tag === "Highly Similar" ? "Adjacent Find" : tag);
-  
-            // Use every filter: all selected filters must be met.
-            return selectedFilters.every(filter => {
-              if (filter === "Confirmed") return pair.duplicateStatus === "confirmed";
-              else if (filter === "Unconfirmed") return pair.duplicateStatus === "unconfirmed";
-              else if (filter === "Not Duplicate") return pair.duplicateStatus === "not duplicate";
-              else return tagsArray.includes(filter);
+        // Filtering
+        const filt = urlParams.get("filter") ? urlParams.get("filter").split(",").map(s=>s.trim()) : [];
+        if (filt.length) {
+          data = data.filter(pair=>{
+            let tags = [];
+            if (Array.isArray(pair.Tags)) tags = pair.Tags;
+            else if (pair.Tags) tags = pair.Tags.split(";").map(t=>t.trim());
+            tags = tags.map(t=>t==="Highly Similar"?"Adjacent Find":t);
+            return filt.every(f=>{
+              if (f==="Confirmed") return pair.duplicateStatus==="confirmed";
+              if (f==="Unconfirmed") return pair.duplicateStatus==="unconfirmed";
+              if (f==="Not Duplicate") return pair.duplicateStatus==="not duplicate";
+              return tags.includes(f);
             });
           });
         }
-  
-        const accordion = document.createElement('div');
-        accordion.className = 'accordion';
-        accordion.id = 'idLookupAccordion';
-  
-        data.forEach((pair, index) => {
-          const accordionItem = document.createElement('div');
-          accordionItem.className = 'accordion-item';
-  
-          const headerId = `heading${index}`;
-          const collapseId = `collapse${index}`;
-          const accordionHeader = document.createElement('h2');
-          accordionHeader.className = 'accordion-header';
-          accordionHeader.id = headerId;
-  
-          // Prepare confirmation badge based on duplicateStatus.
-          const status = pair.duplicateStatus || "unconfirmed";
-          let confirmBadge = "";
-          if (status === "confirmed") {
-            confirmBadge = `<span id="confirmBadge_${pair.id}" class="badge bg-success me-1">Confirmed</span>`;
-          } else if (status === "not duplicate") {
-            confirmBadge = `<span id="confirmBadge_${pair.id}" class="badge bg-danger me-1">Not Duplicate</span>`;
-          } else {
-            confirmBadge = `<span id="confirmBadge_${pair.id}" class="badge bg-dark me-1">Unconfirmed</span>`;
-          }
-  
-          // Process tags for display.
-          let rawTags = pair.Tags || "";
-          let tagsArray = [];
-          if (Array.isArray(rawTags)) { 
-            tagsArray = rawTags; 
-          } else if (typeof rawTags === "string") {
-            tagsArray = rawTags.split(";").map(tag => tag.trim()).filter(tag => tag.length > 0);
-          }
-          let formattedTags = tagsArray.map(tag => {
-            if (tag === "Highly Similar") { tag = "Adjacent Find"; }
-            if (tag === "Adjacent Find") {
-              return `<span class="badge bg-primary me-1">${tag}</span>`;
-            } else if (tag === "Mixed Source") {
-              return `<span class="badge bg-warning me-1">${tag}</span>`;
-            } else {
-              return `<span class="badge bg-secondary me-1">${tag}</span>`;
-            }
+        const accordion = document.createElement("div");
+        accordion.className = "accordion";
+        accordion.id = "idLookupAccordion";
+        data.forEach((pair, i)=>{
+          const item = document.createElement("div");
+          item.className = "accordion-item";
+          const headerId = `heading${i}`, collapseId = `collapse${i}`;
+          // Header
+          const h2 = document.createElement("h2");
+          h2.className = "accordion-header";
+          h2.id = headerId;
+          let badge="";
+          if (pair.duplicateStatus==="confirmed") badge=`<span id="confirmBadge_${pair.id}" class="badge bg-success me-1">Confirmed</span>`;
+          else if(pair.duplicateStatus==="not duplicate") badge=`<span id="confirmBadge_${pair.id}" class="badge bg-danger me-1">Not Duplicate</span>`;
+          else badge=`<span id="confirmBadge_${pair.id}" class="badge bg-dark me-1">Unconfirmed</span>`;
+          let tagsArr = [];
+          if (Array.isArray(pair.Tags)) tagsArr=pair.Tags;
+          else if(pair.Tags) tagsArr=pair.Tags.split(";").map(t=>t.trim());
+          let tagHtml = tagsArr.map(t=>{
+            if (t==="Highly Similar") t="Adjacent Find";
+            let cls="bg-secondary";
+            if (t==="Adjacent Find") cls="bg-primary";
+            else if (t==="Mixed Source") cls="bg-warning";
+            return `<span class="badge ${cls} me-1">${t}</span>`;
           }).join(" ");
-          formattedTags = (formattedTags ? formattedTags + " " : "") + confirmBadge;
-  
-          const accordionButton = document.createElement('button');
-          accordionButton.className = 'accordion-button collapsed';
-          accordionButton.type = 'button';
-          accordionButton.setAttribute('data-bs-toggle', 'collapse');
-          accordionButton.setAttribute('data-bs-target', `#${collapseId}`);
-          accordionButton.setAttribute('aria-expanded', 'false');
-          accordionButton.setAttribute('aria-controls', collapseId);
-          
-          accordionButton.innerHTML = `
+          tagHtml = (tagHtml?tagHtml+" ":"") + badge;
+          const btn = document.createElement("button");
+          btn.className = "accordion-button collapsed";
+          btn.type = "button";
+          btn.setAttribute("data-bs-toggle","collapse");
+          btn.setAttribute("data-bs-target",`#${collapseId}`);
+          btn.setAttribute("aria-expanded","false");
+          btn.setAttribute("aria-controls",collapseId);
+          btn.innerHTML = `
             <div class="d-flex w-100 justify-content-between align-items-center">
               <div>
-                <strong>Pair ${index + 1}:</strong>
-                FindID1=${pair.FindID1 != null ? pair.FindID1 : 'N/A'}, 
-                FindID2=${pair.FindID2 != null ? pair.FindID2 : 'N/A'}, 
-                Similarity=${pair.Similarity != null ? pair.Similarity.toFixed(2) + '%' : 'N/A'}
-                <br>
-                ${formattedTags}
+                <strong>Pair ${i+1}:</strong>
+                FindID1=${pair.FindID1!=null?pair.FindID1:"N/A"},
+                FindID2=${pair.FindID2!=null?pair.FindID2:"N/A"},
+                Similarity=${pair.Similarity!=null?pair.Similarity.toFixed(2)+"%":"N/A"}
+                <br>${tagHtml}
               </div>
-              <div>
-                <span style="color:green;">${pair.upvotes}</span> | <span style="color:red;">${pair.downvotes}&nbsp;</span>
-              </div>
-            </div>
-          `;
-          accordionHeader.appendChild(accordionButton);
-          accordionItem.appendChild(accordionHeader);
-  
-          const accordionCollapse = document.createElement('div');
-          accordionCollapse.id = collapseId;
-          accordionCollapse.className = 'accordion-collapse collapse';
-          accordionCollapse.setAttribute('aria-labelledby', headerId);
-          accordionCollapse.setAttribute('data-bs-parent', '#idLookupAccordion');
-  
-          const accordionBody = document.createElement('div');
-          accordionBody.className = 'accordion-body';
-  
-          // Create Table for Side-by-Side Comparison.
-          const table = document.createElement('table');
-          table.className = 'table table-bordered table-sm';
-          const thead = document.createElement('thead');
-          const headerRow = document.createElement('tr');
-          const thField = document.createElement('th');
-          thField.scope = 'col';
-          thField.textContent = 'Field';
-          headerRow.appendChild(thField);
-          const thEntry1 = document.createElement('th');
-          thEntry1.scope = 'col';
-          thEntry1.textContent = `Entry1 (FindID1=${pair.FindID1 != null ? pair.FindID1 : 'N/A'})`;
-          headerRow.appendChild(thEntry1);
-          const thEntry2 = document.createElement('th');
-          thEntry2.scope = 'col';
-          thEntry2.textContent = `Entry2 (FindID2=${pair.FindID2 != null ? pair.FindID2 : 'N/A'})`;
-          headerRow.appendChild(thEntry2);
-          thead.appendChild(headerRow);
+              <div><span style="color:green;">${pair.upvotes}</span> | <span style="color:red;">${pair.downvotes}</span></div>
+            </div>`;
+          h2.appendChild(btn);
+          item.appendChild(h2);
+          // Collapse body
+          const collapse = document.createElement("div");
+          collapse.id = collapseId;
+          collapse.className = "accordion-collapse collapse";
+          collapse.setAttribute("aria-labelledby",headerId);
+          collapse.setAttribute("data-bs-parent","#idLookupAccordion");
+          const body = document.createElement("div");
+          body.className = "accordion-body";
+          // Side-by-side table
+          const table = document.createElement("table");
+          table.className = "table table-bordered table-sm";
+          const thead = document.createElement("thead");
+          const trHead = document.createElement("tr");
+          ["Field",`Entry1 (FindID1=${pair.FindID1!=null?pair.FindID1:"N/A"})`,`Entry2 (FindID2=${pair.FindID2!=null?pair.FindID2:"N/A"})`]
+            .forEach(txt=>{
+              const th = document.createElement("th");
+              th.scope="col";
+              th.textContent=txt;
+              trHead.appendChild(th);
+            });
+          thead.appendChild(trHead);
           table.appendChild(thead);
-  
-          const tbody = document.createElement('tbody');
-          const fieldsSet = new Set();
-          if (pair.Entry1 && pair.Entry1.length > 0) { Object.keys(pair.Entry1[0]).forEach(key => fieldsSet.add(key)); }
-          if (pair.Entry2 && pair.Entry2.length > 0) { Object.keys(pair.Entry2[0]).forEach(key => fieldsSet.add(key)); }
-          fieldsSet.forEach(field => {
-            const tr = document.createElement('tr');
-            const tdField = document.createElement('td');
-            tdField.textContent = field;
-            tr.appendChild(tdField);
-            const tdEntry1 = document.createElement('td');
-            if (pair.Entry1 && pair.Entry1.length > 0 && pair.Entry1[0][field] != null) {
-              tdEntry1.textContent = pair.Entry1[0][field];
-            } else { tdEntry1.textContent = 'N/A'; tdEntry1.classList.add('text-danger'); }
-            tr.appendChild(tdEntry1);
-            const tdEntry2 = document.createElement('td');
-            if (pair.Entry2 && pair.Entry2.length > 0 && pair.Entry2[0][field] != null) {
-              tdEntry2.textContent = pair.Entry2[0][field];
-            } else { tdEntry2.textContent = 'N/A'; tdEntry2.classList.add('text-danger'); }
-            tr.appendChild(tdEntry2);
+          const tbody = document.createElement("tbody");
+          const fields = new Set();
+          if (pair.Entry1&&pair.Entry1[0]) Object.keys(pair.Entry1[0]).forEach(f=>fields.add(f));
+          if (pair.Entry2&&pair.Entry2[0]) Object.keys(pair.Entry2[0]).forEach(f=>fields.add(f));
+          fields.forEach(field=>{
+            const tr = document.createElement("tr");
+            const tdF = document.createElement("td");
+            tdF.textContent=field;
+            tr.appendChild(tdF);
+            ["Entry1","Entry2"].forEach((e,idx)=>{
+              const tdV=document.createElement("td");
+              const arr = idx===0?pair.Entry1:pair.Entry2;
+              if (arr&&arr[0]&&arr[0][field]!=null) tdV.textContent=arr[0][field];
+              else {
+                tdV.textContent="N/A";
+                tdV.classList.add("text-danger");
+              }
+              tr.appendChild(tdV);
+            });
             tbody.appendChild(tr);
           });
           table.appendChild(tbody);
-          accordionBody.appendChild(table);
-  
-          // New Button: Show Coin Groups Comparison.
+          body.appendChild(table);
+          // Show Coin Groups
           const showCgBtn = document.createElement("button");
-          showCgBtn.className = "btn btn-info btn-sm";
-          showCgBtn.textContent = "Show Coin Groups Comparison";
-          showCgBtn.onclick = () => showCoinGroups(pair);
-          accordionBody.appendChild(showCgBtn);
-  
-          // Create a container for inline buttons.
-          const btnContainer = document.createElement('div');
-          btnContainer.className = 'd-flex justify-content-between align-items-center mt-3 w-100';
-  
-          // Left group: vote container.
-          const leftGroup = document.createElement('div');
-          leftGroup.className = 'd-flex align-items-center';
-          const voteContainer = document.createElement('div');
-          voteContainer.className = 'vote-container';
-  
-          // Upvote Button.
-          const upvoteBtn = document.createElement('button');
-          upvoteBtn.innerHTML = `<i class="bi bi-caret-up-fill"></i>`;
-          upvoteBtn.onclick = async function() {
+          showCgBtn.className="btn btn-info btn-sm";
+          showCgBtn.textContent="Show Coin Groups Comparison";
+          showCgBtn.onclick = ()=> showCoinGroups(pair);
+          body.appendChild(showCgBtn);
+          // Show Voters
+          const showVotersBtn = document.createElement("button");
+          showVotersBtn.className="btn btn-outline-secondary btn-sm ms-2";
+          showVotersBtn.textContent="Show Voters";
+          showVotersBtn.onclick = ()=> showVoters(pair);
+          body.appendChild(showVotersBtn);
+          // Buttons container
+          const btnContainer = document.createElement("div");
+          btnContainer.className="d-flex justify-content-between align-items-center mt-3 w-100";
+          // Left: voting
+          const left = document.createElement("div");
+          left.className="d-flex align-items-center";
+          const vcont = document.createElement("div");
+          vcont.className="vote-container";
+          // Upvote button
+          const upBtn = document.createElement("button");
+          upBtn.innerHTML = `<i class="bi bi-caret-up-fill"></i>`;
+          upBtn.onclick = async () => {
             const userId = auth.currentUser.uid;
-            const voteRef = db.collection("find_results").doc(pair.id).collection("votes").doc(userId);
+            const voteRef = db.collection("find_results")
+                              .doc(pair.id)
+                              .collection("votes")
+                              .doc(userId);
             const mainDocRef = db.collection("find_results").doc(pair.id);
             try {
               const voteDoc = await voteRef.get();
+              const batch = db.batch();
               if (voteDoc.exists) {
                 const currentVote = voteDoc.data().vote;
                 if (currentVote === 1) {
-                  await db.runTransaction(async (transaction) => {
-                    transaction.delete(voteRef);
-                    transaction.update(mainDocRef, {
-                      upvotes: firebase.firestore.FieldValue.increment(-1)
-                    });
+                  // Remove upvote
+                  batch.delete(voteRef);
+                  batch.update(mainDocRef, {
+                    upvotes: firebase.firestore.FieldValue.increment(-1)
                   });
                   pair.upvotes = (pair.upvotes || 0) - 1;
                 } else {
-                  await db.runTransaction(async (transaction) => {
-                    transaction.update(voteRef, { vote: 1 });
-                    transaction.update(mainDocRef, {
-                      upvotes: firebase.firestore.FieldValue.increment(1),
-                      downvotes: firebase.firestore.FieldValue.increment(-1)
-                    });
+                  // Switch from downvote to upvote
+                  batch.update(voteRef, { vote: 1, email: auth.currentUser.email });
+                  batch.update(mainDocRef, {
+                    upvotes: firebase.firestore.FieldValue.increment(1),
+                    downvotes: firebase.firestore.FieldValue.increment(-1)
                   });
                   pair.upvotes = (pair.upvotes || 0) + 1;
                   pair.downvotes = (pair.downvotes || 0) - 1;
                 }
               } else {
-                await db.runTransaction(async (transaction) => {
-                  transaction.set(voteRef, { vote: 1 });
-                  transaction.update(mainDocRef, {
-                    upvotes: firebase.firestore.FieldValue.increment(1)
-                  });
+                // New upvote
+                batch.set(voteRef, { vote: 1, email: auth.currentUser.email });
+                batch.update(mainDocRef, {
+                  upvotes: firebase.firestore.FieldValue.increment(1)
                 });
                 pair.upvotes = (pair.upvotes || 0) + 1;
               }
-              voteCount.innerHTML = `<span style="color:green;">${pair.upvotes}</span> | <span style="color:red;">${pair.downvotes || 0}</span>`;
+              await batch.commit();
+              voteCount.innerHTML = `<span style="color:green;">${pair.upvotes}</span> | <span style="color:red;">${pair.downvotes||0}</span>`;
             } catch (error) {
               console.error("Error processing upvote:", error);
             }
           };
-          voteContainer.appendChild(upvoteBtn);
-  
-          // Vote Count Display.
-          const voteCount = document.createElement('div');
-          voteCount.className = 'vote-count';
+          vcont.appendChild(upBtn);
+          // Vote count display
+          const voteCount = document.createElement("div");
+          voteCount.className="vote-count";
           voteCount.innerHTML = `<span style="color:green;">${pair.upvotes}</span> | <span style="color:red;">${pair.downvotes}</span>`;
-          voteContainer.appendChild(voteCount);
-  
-          // Downvote Button.
-          const downvoteBtn = document.createElement('button');
-          downvoteBtn.innerHTML = `<i class="bi bi-caret-down-fill"></i>`;
-          downvoteBtn.onclick = async function() {
+          vcont.appendChild(voteCount);
+          // Downvote button
+          const downBtn = document.createElement("button");
+          downBtn.innerHTML = `<i class="bi bi-caret-down-fill"></i>`;
+          downBtn.onclick = async () => {
             const userId = auth.currentUser.uid;
-            const voteRef = db.collection("find_results").doc(pair.id).collection("votes").doc(userId);
+            const voteRef = db.collection("find_results")
+                              .doc(pair.id)
+                              .collection("votes")
+                              .doc(userId);
             const mainDocRef = db.collection("find_results").doc(pair.id);
             try {
               const voteDoc = await voteRef.get();
+              const batch = db.batch();
               if (voteDoc.exists) {
                 const currentVote = voteDoc.data().vote;
                 if (currentVote === -1) {
-                  await db.runTransaction(async (transaction) => {
-                    transaction.delete(voteRef);
-                    transaction.update(mainDocRef, {
-                      downvotes: firebase.firestore.FieldValue.increment(-1)
-                    });
+                  // Remove downvote
+                  batch.delete(voteRef);
+                  batch.update(mainDocRef, {
+                    downvotes: firebase.firestore.FieldValue.increment(-1)
                   });
                   pair.downvotes = (pair.downvotes || 0) - 1;
                 } else {
-                  await db.runTransaction(async (transaction) => {
-                    transaction.update(voteRef, { vote: -1 });
-                    transaction.update(mainDocRef, {
-                      upvotes: firebase.firestore.FieldValue.increment(-1),
-                      downvotes: firebase.firestore.FieldValue.increment(1)
-                    });
+                  // Switch from upvote to downvote
+                  batch.update(voteRef, { vote: -1, email: auth.currentUser.email });
+                  batch.update(mainDocRef, {
+                    upvotes: firebase.firestore.FieldValue.increment(-1),
+                    downvotes: firebase.firestore.FieldValue.increment(1)
                   });
                   pair.upvotes = (pair.upvotes || 0) - 1;
                   pair.downvotes = (pair.downvotes || 0) + 1;
                 }
               } else {
-                await db.runTransaction(async (transaction) => {
-                  transaction.set(voteRef, { vote: -1 });
-                  transaction.update(mainDocRef, {
-                    downvotes: firebase.firestore.FieldValue.increment(1)
-                  });
+                // New downvote
+                batch.set(voteRef, { vote: -1, email: auth.currentUser.email });
+                batch.update(mainDocRef, {
+                  downvotes: firebase.firestore.FieldValue.increment(1)
                 });
                 pair.downvotes = (pair.downvotes || 0) + 1;
               }
-              voteCount.innerHTML = `<span style="color:green;">${pair.upvotes || 0}</span> | <span style="color:red;">${pair.downvotes}</span>`;
+              await batch.commit();
+              voteCount.innerHTML = `<span style="color:green;">${pair.upvotes||0}</span> | <span style="color:red;">${pair.downvotes}</span>`;
             } catch (error) {
               console.error("Error processing downvote:", error);
             }
           };
-          voteContainer.appendChild(downvoteBtn);
-  
-          leftGroup.appendChild(voteContainer);
-  
-          // Right group: add Confirm Duplicate, Confirm Not Duplicate, and Manual Verification buttons.
-          const rightGroup = document.createElement('div');
-          rightGroup.className = 'd-flex align-items-center';
-  
-          // Confirm Duplicate Button.
-          const confirmDuplicateBtn = document.createElement('button');
-          confirmDuplicateBtn.className = 'btn btn-outline-info btn-sm me-2';
-          confirmDuplicateBtn.innerHTML = (pair.duplicateStatus === "confirmed") ? 'Unconfirm Duplicate' : 'Confirm Duplicate';
-          confirmDuplicateBtn.onclick = async function() {
+          vcont.appendChild(downBtn);
+          left.appendChild(vcont);
+          btnContainer.appendChild(left);
+
+          // Right: confirm & verify
+          const right = document.createElement("div");
+          right.className="d-flex align-items-center";
+          // Confirm Duplicate
+          const confirmDuplicateBtn = document.createElement("button");
+          confirmDuplicateBtn.className="btn btn-outline-info btn-sm me-2";
+          confirmDuplicateBtn.innerHTML = pair.duplicateStatus==="confirmed"
+            ? "Unconfirm Duplicate"
+            : "Confirm Duplicate";
+          confirmDuplicateBtn.onclick = async () => {
             const docRef = db.collection("find_results").doc(pair.id);
-            let newStatus = (pair.duplicateStatus === "confirmed") ? "unconfirmed" : "confirmed";
+            const newStatus = pair.duplicateStatus==="confirmed" ? "unconfirmed" : "confirmed";
             try {
               await docRef.update({ duplicateStatus: newStatus });
               pair.duplicateStatus = newStatus;
-              confirmDuplicateBtn.innerHTML = (pair.duplicateStatus === "confirmed") ? 'Unconfirm Duplicate' : 'Confirm Duplicate';
+              confirmDuplicateBtn.innerHTML = newStatus==="confirmed"
+                ? "Unconfirm Duplicate" : "Confirm Duplicate";
               const badgeEl = document.getElementById(`confirmBadge_${pair.id}`);
-              if(badgeEl) {
-                badgeEl.outerHTML = (pair.duplicateStatus === "confirmed") 
+              if (badgeEl) {
+                badgeEl.outerHTML = newStatus==="confirmed"
                   ? `<span id="confirmBadge_${pair.id}" class="badge bg-success me-1">Confirmed</span>`
-                  : (pair.duplicateStatus === "not duplicate")
-                     ? `<span id="confirmBadge_${pair.id}" class="badge bg-danger me-1">Not Duplicate</span>`
-                     : `<span id="confirmBadge_${pair.id}" class="badge bg-dark me-1">Unconfirmed</span>`;
+                  : newStatus==="not duplicate"
+                    ? `<span id="confirmBadge_${pair.id}" class="badge bg-danger me-1">Not Duplicate</span>`
+                    : `<span id="confirmBadge_${pair.id}" class="badge bg-dark me-1">Unconfirmed</span>`;
               }
-            } catch(e) {
+            } catch (e) {
               console.error("Error toggling duplicate status", e);
             }
           };
-          rightGroup.appendChild(confirmDuplicateBtn);
-  
-          // Confirm Not Duplicate Button.
-          const confirmNotDuplicateBtn = document.createElement('button');
-          confirmNotDuplicateBtn.className = 'btn btn-outline-danger btn-sm me-2';
-          confirmNotDuplicateBtn.innerHTML = (pair.duplicateStatus === "not duplicate") ? 'Unconfirm Not Duplicate' : 'Confirm Not Duplicate';
-          confirmNotDuplicateBtn.onclick = async function() {
+          right.appendChild(confirmDuplicateBtn);
+          // Confirm Not Duplicate
+          const confirmNotDuplicateBtn = document.createElement("button");
+          confirmNotDuplicateBtn.className="btn btn-outline-danger btn-sm me-2";
+          confirmNotDuplicateBtn.innerHTML = pair.duplicateStatus==="not duplicate"
+            ? "Unconfirm Not Duplicate"
+            : "Confirm Not Duplicate";
+          confirmNotDuplicateBtn.onclick = async () => {
             const docRef = db.collection("find_results").doc(pair.id);
-            let newStatus = (pair.duplicateStatus === "not duplicate") ? "unconfirmed" : "not duplicate";
+            const newStatus = pair.duplicateStatus==="not duplicate" ? "unconfirmed" : "not duplicate";
             try {
               await docRef.update({ duplicateStatus: newStatus });
               pair.duplicateStatus = newStatus;
-              confirmNotDuplicateBtn.innerHTML = (pair.duplicateStatus === "not duplicate") ? 'Unconfirm Not Duplicate' : 'Confirm Not Duplicate';
+              confirmNotDuplicateBtn.innerHTML = newStatus==="not duplicate"
+                ? "Unconfirm Not Duplicate" : "Confirm Not Duplicate";
               const badgeEl = document.getElementById(`confirmBadge_${pair.id}`);
-              if(badgeEl) {
-                badgeEl.outerHTML = (pair.duplicateStatus === "confirmed") 
+              if (badgeEl) {
+                badgeEl.outerHTML = newStatus==="confirmed"
                   ? `<span id="confirmBadge_${pair.id}" class="badge bg-success me-1">Confirmed</span>`
-                  : (pair.duplicateStatus === "not duplicate")
-                     ? `<span id="confirmBadge_${pair.id}" class="badge bg-danger me-1">Not Duplicate</span>`
-                     : `<span id="confirmBadge_${pair.id}" class="badge bg-dark me-1">Unconfirmed</span>`;
+                  : newStatus==="not duplicate"
+                    ? `<span id="confirmBadge_${pair.id}" class="badge bg-danger me-1">Not Duplicate</span>`
+                    : `<span id="confirmBadge_${pair.id}" class="badge bg-dark me-1">Unconfirmed</span>`;
               }
-            } catch(e) {
+            } catch (e) {
               console.error("Error toggling not duplicate status", e);
             }
           };
-          rightGroup.appendChild(confirmNotDuplicateBtn);
-  
-          // Manual Verification Button.
+          right.appendChild(confirmNotDuplicateBtn);
+          // Manual Verification Link
           if (pair.ManualVerificationLink) {
-            const linkBtn = document.createElement('a');
+            const linkBtn = document.createElement("a");
             linkBtn.href = pair.ManualVerificationLink;
-            linkBtn.target = '_blank';
-            linkBtn.className = 'btn btn-primary btn-sm';
+            linkBtn.target = "_blank";
+            linkBtn.className = "btn btn-primary btn-sm";
             linkBtn.innerHTML = `<i class="bi bi-info-circle"></i> Verification`;
-            rightGroup.appendChild(linkBtn);
+            right.appendChild(linkBtn);
           }
-  
-          btnContainer.appendChild(leftGroup);
-          btnContainer.appendChild(rightGroup);
-          accordionBody.appendChild(btnContainer);
-  
-          accordionCollapse.appendChild(accordionBody);
-          accordionItem.appendChild(accordionCollapse);
-          accordion.appendChild(accordionItem);
+          btnContainer.appendChild(right);
+
+          body.appendChild(btnContainer);
+          collapse.appendChild(body);
+          item.appendChild(collapse);
+          accordion.appendChild(item);
         });
-        contentDiv.innerHTML = '';
+        contentDiv.innerHTML = "";
         contentDiv.appendChild(accordion);
-        // Hide loading spinner.
         loadingDiv.style.display = "none";
       } catch (error) {
-         contentDiv.innerHTML = `<p class="error-message">Failed to load data: ${error}</p>`;
-         loadingDiv.style.display = "none";
+        contentDiv.innerHTML = `<p class="error-message">Failed to load data: ${error}</p>`;
+        loadingDiv.style.display = "none";
       }
     }
   </script>
