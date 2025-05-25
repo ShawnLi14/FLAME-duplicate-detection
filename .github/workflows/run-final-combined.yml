@@ -1,7 +1,7 @@
 name: Run FINAL_COMBINED
 
 on:
-  # twice‐daily (00:00 & 12:00 UTC)
+  # twice-daily (00:00 & 12:00 UTC)
   schedule:
     - cron: '0 0 * * *'
     - cron: '0 12 * * *'
@@ -12,6 +12,7 @@ jobs:
   run-script:
     runs-on: ubuntu-latest
 
+    # your script reads this env‐var to find the key
     env:
       SERVICE_ACCOUNT_KEY_PATH: ${{ github.workspace }}/firebase_key.json
 
@@ -38,8 +39,16 @@ jobs:
           pip install -r requirements.txt
 
       - name: Write Firebase service account key
-        # this writes the raw JSON from your secret into firebase_key.json
-        run: echo "${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}" > firebase_key.json
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const fs = require('fs');
+            fs.writeFileSync(
+              'firebase_key.json',
+              process.env.FIREBASE_SERVICE_ACCOUNT_JSON
+            );
+        env:
+          FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
 
       - name: Run FINAL_COMBINED.py
         run: python FINAL_COMBINED.py
