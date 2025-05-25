@@ -38,10 +38,8 @@ jobs:
           pip install -r requirements.txt
 
       - name: Write Firebase service account key
-        run: |
-          cat <<EOF > firebase_key.json
-${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
-EOF
+        # this writes the raw JSON from your secret into firebase_key.json
+        run: echo "${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}" > firebase_key.json
 
       - name: Run FINAL_COMBINED.py
         run: python FINAL_COMBINED.py
