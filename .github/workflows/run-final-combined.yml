@@ -1,0 +1,47 @@
+name: Run FINAL_COMBINED
+
+on:
+  # twice‐daily (00:00 & 12:00 UTC)
+  schedule:
+    - cron: '0 0 * * *'
+    - cron: '0 12 * * *'
+  # manual trigger
+  workflow_dispatch:
+
+jobs:
+  run-script:
+    runs-on: ubuntu-latest
+
+    env:
+      SERVICE_ACCOUNT_KEY_PATH: ${{ github.workspace }}/firebase_key.json
+
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.10
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
+      - name: Cache pip
+        uses: actions/cache@v3
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Write Firebase service account key
+        run: |
+          cat <<EOF > firebase_key.json
+${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+EOF
+
+      - name: Run FINAL_COMBINED.py
+        run: python FINAL_COMBINED.py
